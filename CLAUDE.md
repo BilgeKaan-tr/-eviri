@@ -36,13 +36,18 @@ ve birim testlerle doğrulanır. Gerçek test kullanıcının cihazında yapıl�
 ## 3) Kendi istatistiksel çeviri motoru — `src/mt/`
 
 Sıfırdan, bağımsız SMT motoru. Paralel metinden öğrenir, dış bağımlılık yok.
-- `src/mt/engine.js`: tokenize, **IBM Model 1 (EM)** ile `t(tgt|src)`, Türkçe
-  bigram dil modeli, monoton beam çözücü (yayvan dağılımlı işlev kelimeleri NULL
-  ile düşürülür), `serialize`/`deserialize`, yüksek seviye `buildModel`/`translate`.
-- `scripts/mt-train.js` (TSV veya iki hizalı dosya → `model.json`),
-  `scripts/mt-translate.js`, `scripts/mt-demo.mjs` (öğrenme kanıtı).
+- `src/mt/engine.js` (kelime-tabanlı): tokenize, **IBM Model 1 (EM)** ile
+  `t(tgt|src)`, Türkçe bigram dil modeli, NULL-düşürmeli monoton beam çözücü,
+  `serialize`/`deserialize`, `buildModel`/`translate`.
+- `src/mt/phrase.js` (öbek-tabanlı, **varsayılan**): iki yönlü IBM-1 →
+  grow-diag-final-and birleştirme → tutarlı öbek çıkarımı → φ(f̄|ē) skorlama →
+  öbek-tabanlı beam çözücü. Çözücüde **wordBonus** (kelime-üretim ödülü) dil
+  modelinin negatif log skorlarını dengeler; yoksa boş çıktı seçilir.
+- CLI: `scripts/mt-train.js` (varsayılan öbek; `--word` ile kelime; `--maxphrase`,
+  `--mincount`, `--iter`), `scripts/mt-translate.js` (model türünü otomatik algılar),
+  `scripts/mt-phrase-demo.mjs` (öbek vs kelime), `scripts/mt-demo.mjs`.
 - Tamamen Node ile test edilebilir (tarayıcı/CDN gerekmez). Yol haritası:
-  öbek-tabanlı çeviri, otomatik cümle hizalama, tarayıcıya entegrasyon.
+  otomatik cümle hizalama, reordering, trigram LM, tarayıcıya entegrasyon.
 
 ## Geliştirme notları
 - Tarayıcı tarafı JS değişikliğinden sonra: script'i çıkarıp `node --check` ile sözdizimini doğrula.

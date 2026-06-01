@@ -13,32 +13,43 @@ bir PDF üretir.
 ## 🧪 Kendi çeviri motorumuz (sıfırdan, bağımsız) — `src/mt/`
 
 Hiçbir dış model/servis kullanmadan, **paralel metinden öğrenen** kendi
-istatistiksel çeviri motorumuz (SMT). Mantığı: iki dilli (kaynak ↔ Türkçe)
-hizalı metni verirsiniz, motor **IBM Model 1 (EM algoritması)** ile kelime
-karşılıklarını öğrenir, bir Türkçe **n-gram dil modeli** ile akıcılığı sağlar
-ve yeni cümleleri çevirir.
+istatistiksel çeviri motorumuz (SMT). İki dilli (kaynak ↔ Türkçe) hizalı metni
+verirsiniz; motor kelime/öbek karşılıklarını öğrenir ve yeni cümleleri çevirir.
+
+İki motor vardır:
+- **Öbek-tabanlı (varsayılan, önerilen):** "kelime gruplarını" öğrenir
+  (`thank you` → `teşekkür ederim`). İki yönlü IBM-1 hizalaması →
+  grow-diag-final-and ile birleştirme → öbek çıkarımı → öbek-tabanlı beam
+  çözücü (+ Türkçe dil modeli ve kelime-üretim ödülü). `src/mt/phrase.js`
+- **Kelime-tabanlı (basit):** sadece IBM Model 1 kelime hizalaması. `src/mt/engine.js`
 
 ```bash
-# 1) Eğit (hizalı cümle çiftlerinden)
-node scripts/mt-train.js --tsv data/ornek-paralel.tsv --out model.json --iter 30
+# 1) Eğit  (öbek-tabanlı varsayılan)
+node scripts/mt-train.js --tsv data/ornek-paralel.tsv --out model.json --iter 20
 
-# 2) Çevir
-node scripts/mt-translate.js --model model.json --text "the white dog is big"
-# -> Beyaz köpek büyük
+# 2) Çevir  (model türü otomatik algılanır)
+node scripts/mt-translate.js --model model.json --text "thank you very much"
+# -> Çok teşekkür ederim
 
-# Hızlı kanıt gösterimi (öğrenmeyi gösterir)
-node scripts/mt-demo.mjs
+# Karşılaştırma gösterimi (öbek vs kelime)
+node scripts/mt-phrase-demo.mjs
 ```
+
+**Eğitim seçenekleri:** `--iter` (EM turu), `--maxphrase` (en uzun öbek),
+`--mincount` (büyük veride 2-3 yapın; nadir öbekleri eler), `--word` (kelime motoru).
 
 **Veri biçimi:** `--tsv` ile her satır `kaynak<TAB>türkçe`; veya `--src en.txt
 --tgt tr.txt` ile satır satır hizalı iki dosya.
 
-**Dürüst beklenti:** Bu motor *gerçekten öğrenir* ve verdiğiniz veri arttıkça
-gelişir; tamamen bizim, bağımsız ve çevrimdışıdır. Ancak kalite, sinir ağı
-modellerinin (NLLB/Google) altındadır — onlar yüz milyonlarca cümleyle eğitilir.
-İki kitap, kelime/öbek karşılıklarını öğrenmeye yeter ama karmaşık dilbilgisi ve
-kelime sırasında sınırlı kalır. Yol haritası: öbek-tabanlı çeviri (phrase-based),
-ham kitaplar için otomatik cümle hizalama, daha güçlü dil modeli.
+**Ölçekleme (2000+ kitap):** Veri arttıkça kalite belirgin yükselir. Çok büyük
+veride `--mincount 2` (veya 3) verip belleği/dosya boyutunu kontrol edin. Saf JS
+eğitim tek çekirdektir; milyonlarca cümlede eğitim uzun sürebilir.
+
+**Dürüst beklenti:** Bu motor *gerçekten öğrenir* ve veri arttıkça gelişir;
+tamamen bizim, bağımsız ve çevrimdışıdır. Yine de tavan kalitesi sinir ağı
+modellerinin (NLLB/Google) altındadır. Yol haritası: ham kitaplar için otomatik
+cümle hizalama, kelime-sırası (reordering) modeli, daha güçlü (trigram) dil modeli,
+tarayıcıya entegrasyon.
 
 ## ⚡ Tamamen bağımsız sürüm: `cevir.html` (önerilen)
 
