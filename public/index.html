@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="tr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PDF Çeviri — Türkçe</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <main class="app">
+      <header>
+        <h1>📄 PDF Çeviri</h1>
+        <p class="subtitle">PDF dosyanızı yükleyin, tamamını Türkçe'ye çevirelim.</p>
+      </header>
+
+      <section id="dropzone" class="dropzone">
+        <input type="file" id="fileInput" accept="application/pdf" hidden />
+        <div class="dz-inner">
+          <div class="dz-icon">⬆️</div>
+          <p class="dz-text">PDF dosyasını buraya sürükleyin</p>
+          <p class="dz-or">veya</p>
+          <button type="button" id="browseBtn" class="btn">Dosya Seç</button>
+          <p class="dz-hint">En fazla 50 MB · Kaynak dil otomatik algılanır</p>
+        </div>
+      </section>
+
+      <section id="status" class="status hidden">
+        <div class="file-row">
+          <span id="fileName" class="file-name"></span>
+          <span id="phaseLabel" class="phase"></span>
+        </div>
+        <div class="progress-bar">
+          <div id="progressFill" class="progress-fill"></div>
+        </div>
+        <p id="progressText" class="progress-text">Hazırlanıyor...</p>
+      </section>
+
+      <section id="result" class="result hidden">
+        <div class="result-icon">✅</div>
+        <p class="result-text">Çeviri tamamlandı!</p>
+        <a id="downloadLink" class="btn btn-primary" download>Çevrilmiş PDF'i İndir</a>
+        <button type="button" id="resetBtn" class="btn btn-ghost">Yeni Dosya</button>
+      </section>
+
+      <section id="error" class="error hidden">
+        <div class="result-icon">⚠️</div>
+        <p id="errorText" class="result-text"></p>
+        <button type="button" id="errorResetBtn" class="btn btn-ghost">Tekrar Dene</button>
+      </section>
+
+      <footer>
+        <p>Claude API ile güçlendirilmiştir · Türkçe karakter destekli</p>
+      </footer>
+    </main>
+
+    <script src="app.js"></script>
+  </body>
+</html>
