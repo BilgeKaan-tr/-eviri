@@ -204,6 +204,12 @@ const Engine = {
       await this._workerLoad(worker, { dtype, useGPU, onProgress });
       this.worker = worker; this.mode = "worker";
       worker.onmessage = (e) => this._onWorkerMsg(e.data);
+      // Worker cokerse bekleyen tum istekleri reddet (UI takilmasin).
+      worker.onerror = (e) => {
+        const msg = (e && e.message) || "çeviri arka planı çöktü";
+        for (const p of this.pending.values()) p.reject(new Error(msg));
+        this.pending.clear();
+      };
       return;
     } catch (err) {
       console.warn("Worker kullanılamadı, ana iş parçacığına geçiliyor:", err);
@@ -364,13 +370,17 @@ async function handleFile(file){
     const totalJobs = jobs.length || 1;
 
     const cache = new Map();   // ayni metin parcalarini tekrar cevirme
-    let done = 0; const t0 = performance.now();
+    let done = 0, failed = 0; const t0 = performance.now();
 
     for(const job of jobs){
       if(cancelRequested){ reset(); return; }
       const key = job.src + " " + job.text;
       let tr = cache.get(key);
-      if(tr === undefined){ tr = await Engine.translate(job.text, job.src); cache.set(key, tr); }
+      if(tr === undefined){
+        try { tr = await Engine.translate(job.text, job.src); }
+        catch(e){ console.warn("parça çevrilemedi, orijinal korunuyor:", e); tr = job.text; failed++; }
+        cache.set(key, tr);
+      }
       pageBuckets[job.pi][job.pj][job.ci] = tr;
 
       done++;
@@ -383,6 +393,9 @@ async function handleFile(file){
     }
 
     if(cancelRequested){ reset(); return; }
+    if(failed >= totalJobs){
+      return fail("Çeviri yapılamadı. Cihaz belleği yetersiz olabilir; 'Hızlı / düşük bellek' modunu deneyin veya tarayıcıyı yeniden başlatın.");
+    }
     progressText.textContent="Çevrilmiş PDF oluşturuluyor..."; progressSub.textContent="";
     // Paragraf alt-parcalari bosluk, paragraflar bos satirla birlesir.
     const translated = pages.map((pg,pi)=>({
