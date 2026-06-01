@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>PDF Çeviri — Türkçe (NLLB)</title>
+<title>PDF Çeviri — Türkçe (Bağımsız)</title>
 <style>
   :root{--bg:#0f1115;--card:#1a1d24;--border:#2a2f3a;--text:#e7e9ee;--muted:#9aa0ac;--accent:#6d8bff;--accent-2:#8a6dff;--ok:#3ecf8e;--err:#ff6b6b}
   *{box-sizing:border-box;margin:0;padding:0}
@@ -12,25 +12,21 @@
   header{text-align:center;margin-bottom:24px}
   h1{font-size:32px;letter-spacing:-.5px}
   .subtitle{color:var(--muted);margin-top:8px}
-  .card{background:var(--card);border:1px solid var(--border);border-radius:18px;padding:20px;margin-bottom:16px}
-  .key-row{display:flex;gap:8px;align-items:center}
-  .key-row input{flex:1;background:#232733;border:1px solid var(--border);color:var(--text);padding:10px 12px;border-radius:10px;font-size:14px;font-family:monospace}
-  .key-label{display:flex;justify-content:space-between;align-items:center;font-size:13px;color:var(--muted);margin-bottom:8px}
-  .key-status{font-size:12px}
-  .key-status.ok{color:var(--ok)}
-  .key-help{font-size:12px;color:var(--muted);margin-top:10px;line-height:1.5}
-  .key-help a{color:var(--accent)}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:18px;padding:22px;margin-bottom:16px;text-align:center}
+  .badge{display:inline-block;font-size:12px;color:var(--ok);border:1px solid var(--border);border-radius:999px;padding:4px 10px;margin-bottom:12px}
+  .model-text{font-size:14px;color:var(--muted);line-height:1.6;margin-bottom:16px}
   .dropzone{background:var(--card);border:2px dashed var(--border);border-radius:18px;padding:44px 24px;text-align:center;cursor:pointer;transition:border-color .2s,background .2s,transform .1s}
   .dropzone.dragover{border-color:var(--accent);background:#1d2230;transform:scale(1.01)}
-  .dropzone.disabled{opacity:.5;pointer-events:none}
+  .dropzone.disabled{opacity:.45;pointer-events:none}
   .dz-icon{font-size:40px;margin-bottom:12px}
   .dz-text{font-size:18px;font-weight:600}
   .dz-or{color:var(--muted);margin:10px 0;font-size:14px}
   .dz-hint{color:var(--muted);font-size:13px;margin-top:16px}
-  .btn{display:inline-block;border:1px solid var(--border);background:#232733;color:var(--text);padding:10px 20px;border-radius:10px;font-size:15px;font-weight:600;cursor:pointer;text-decoration:none;transition:filter .15s,transform .1s}
+  .btn{display:inline-block;border:1px solid var(--border);background:#232733;color:var(--text);padding:11px 22px;border-radius:10px;font-size:15px;font-weight:600;cursor:pointer;text-decoration:none;transition:filter .15s,transform .1s}
   .btn:hover{filter:brightness(1.15)}.btn:active{transform:translateY(1px)}
   .btn-primary{background:linear-gradient(135deg,var(--accent),var(--accent-2));border:none;color:#fff}
   .btn-ghost{background:transparent}
+  .btn:disabled{opacity:.5;pointer-events:none}
   .status,.result,.error{background:var(--card);border:1px solid var(--border);border-radius:18px;padding:28px;text-align:center}
   .file-row{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}
   .file-name{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:70%}
@@ -42,7 +38,7 @@
   .result-text{font-size:18px;font-weight:600;margin-bottom:18px}
   .result .btn,.error .btn{margin:6px}
   .error .result-text{color:var(--err);font-size:15px;font-weight:500}
-  footer{text-align:center;color:var(--muted);font-size:12px;margin-top:20px}
+  footer{text-align:center;color:var(--muted);font-size:12px;margin-top:20px;line-height:1.6}
   .hidden{display:none}
 </style>
 </head>
@@ -50,24 +46,22 @@
 <main class="app">
   <header>
     <h1>📄 PDF Çeviri</h1>
-    <p class="subtitle">PDF dosyanızı yükleyin, tamamını Türkçe'ye çevirelim.</p>
+    <p class="subtitle">Tamamen cihazınızda çalışır. Sunucu, API veya kredi yok.</p>
   </header>
 
-  <div class="card">
-    <div class="key-label">
-      <span>🤗 Hugging Face Token</span>
-      <span id="keyStatus" class="key-status">kaydedilmedi</span>
-    </div>
-    <div class="key-row">
-      <input type="password" id="apiKey" placeholder="hf_..." autocomplete="off" />
-      <button type="button" id="saveKey" class="btn">Kaydet</button>
-    </div>
-    <p class="key-help">
-      Ücretsiz token almak için:
-      <a href="https://huggingface.co/join" target="_blank">huggingface.co</a>'ya kayıt olun (kart istemez),
-      ardından <a href="https://huggingface.co/settings/tokens" target="_blank">Settings → Access Tokens</a>
-      sayfasından bir token oluşturun. Token yalnızca bu cihazda saklanır.
+  <!-- Model hazirlama -->
+  <div id="modelCard" class="card">
+    <span class="badge" id="deviceBadge">cihaz kontrol ediliyor...</span>
+    <p class="model-text">
+      Çeviri modeli (Meta NLLB-200) <b>ilk seferde bir kez</b> indirilir
+      (~300–600 MB) ve tarayıcınızda saklanır. Sonrasında <b>internetsiz</b>,
+      tamamen cihazınızda çalışır.
     </p>
+    <button type="button" id="loadModelBtn" class="btn btn-primary">Modeli İndir ve Hazırla</button>
+    <div id="modelProgress" class="hidden" style="margin-top:16px">
+      <div class="progress-bar"><div id="modelFill" class="progress-fill"></div></div>
+      <p id="modelText" class="progress-text">İndiriliyor...</p>
+    </div>
   </div>
 
   <section id="dropzone" class="dropzone disabled">
@@ -77,7 +71,7 @@
       <p class="dz-text">PDF dosyasını buraya sürükleyin</p>
       <p class="dz-or">veya</p>
       <button type="button" id="browseBtn" class="btn">Dosya Seç</button>
-      <p class="dz-hint">Kaynak dil otomatik algılanır · NLLB ile çevrilir</p>
+      <p class="dz-hint">Önce modeli hazırlayın · Kaynak dil otomatik algılanır</p>
     </div>
   </section>
 
@@ -103,7 +97,7 @@
     <button type="button" id="errorResetBtn" class="btn btn-ghost">Tekrar Dene</button>
   </section>
 
-  <footer><p>Tamamı tarayıcınızda çalışır · Token yalnızca bu cihazda saklanır · Meta NLLB-200</p></footer>
+  <footer><p>Hiçbir veriniz cihazınızdan çıkmaz · Çevrimdışı çalışır · Meta NLLB-200</p></footer>
 </main>
 
 <!-- PDF kutuphaneleri (CDN, UMD global) -->
@@ -115,18 +109,21 @@
 <script type="module">
 import * as pdfjsLib from "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.min.mjs";
 import { franc } from "https://cdn.jsdelivr.net/npm/franc@6/+esm";
+import { pipeline, env } from "https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.5.2";
 pdfjsLib.GlobalWorkerOptions.workerSrc =
   "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.worker.min.mjs";
 
+// Modeli tarayicida sakla (yeniden indirme yok)
+env.allowLocalModels = false;
+env.useBrowserCache = true;
+
 const { PDFDocument, rgb } = PDFLib;
 
-// NLLB modeli (ucretsiz HF Inference). 600M hizli ve guvenilir.
-const HF_MODEL = "facebook/nllb-200-distilled-600M";
-const HF_URL = `https://api-inference.huggingface.co/models/${HF_MODEL}`;
-const TGT_LANG = "tur_Latn";       // Hedef: Turkce
-const MAX_CHARS = 800;             // NLLB token sinirina karsi parca boyutu
+const MODEL_ID = "Xenova/nllb-200-distilled-600M"; // tarayicida calisan ONNX surumu
+const TGT_LANG = "tur_Latn";
+const MAX_CHARS = 600;
 
-// franc (ISO 639-3) -> NLLB FLORES-200 kodu
+// franc (ISO 639-3) -> NLLB FLORES-200
 const LANG_MAP = {
   eng:"eng_Latn", tur:"tur_Latn", deu:"deu_Latn", fra:"fra_Latn", spa:"spa_Latn",
   ita:"ita_Latn", por:"por_Latn", rus:"rus_Cyrl", ara:"arb_Arab", arb:"arb_Arab",
@@ -139,36 +136,59 @@ const LANG_MAP = {
   vie:"vie_Latn", tha:"tha_Thai", msa:"zsm_Latn", zsm:"zsm_Latn", aze:"azj_Latn"
 };
 function detectLang(text){
-  try{
-    const code = franc(text || "", { minLength: 10 });
-    return LANG_MAP[code] || "eng_Latn"; // bilinmeyen -> Ingilizce varsay
-  }catch{ return "eng_Latn"; }
+  try{ return LANG_MAP[franc(text||"", {minLength:10})] || "eng_Latn"; }
+  catch{ return "eng_Latn"; }
 }
 
 // ---- DOM ----
-const $ = (id) => document.getElementById(id);
-const apiKeyInput = $("apiKey"), saveKeyBtn = $("saveKey"), keyStatus = $("keyStatus");
-const dropzone = $("dropzone"), fileInput = $("fileInput"), browseBtn = $("browseBtn");
-const statusEl = $("status"), resultEl = $("result"), errorEl = $("error");
-const fileNameEl = $("fileName"), phaseLabel = $("phaseLabel");
-const progressFill = $("progressFill"), progressText = $("progressText");
-const downloadLink = $("downloadLink"), resetBtn = $("resetBtn");
-const errorResetBtn = $("errorResetBtn"), errorText = $("errorText");
+const $ = (id)=>document.getElementById(id);
+const deviceBadge=$("deviceBadge"), loadModelBtn=$("loadModelBtn");
+const modelProgress=$("modelProgress"), modelFill=$("modelFill"), modelText=$("modelText");
+const dropzone=$("dropzone"), fileInput=$("fileInput"), browseBtn=$("browseBtn");
+const statusEl=$("status"), resultEl=$("result"), errorEl=$("error");
+const fileNameEl=$("fileName"), phaseLabel=$("phaseLabel");
+const progressFill=$("progressFill"), progressText=$("progressText");
+const downloadLink=$("downloadLink"), resetBtn=$("resetBtn");
+const errorResetBtn=$("errorResetBtn"), errorText=$("errorText");
 
-// ---- Token (localStorage) ----
-const KEY_STORE = "hf_token";
-function loadKey(){ const k=localStorage.getItem(KEY_STORE); if(k){apiKeyInput.value=k;markKeySaved();} }
-function markKeySaved(){ keyStatus.textContent="✓ kaydedildi"; keyStatus.classList.add("ok"); dropzone.classList.remove("disabled"); }
-saveKeyBtn.addEventListener("click", () => {
-  const k = apiKeyInput.value.trim();
-  if(!k.startsWith("hf_")){ keyStatus.textContent="geçersiz token (hf_ ile başlamalı)"; keyStatus.classList.remove("ok"); return; }
-  localStorage.setItem(KEY_STORE, k); markKeySaved();
-});
-function getKey(){ return localStorage.getItem(KEY_STORE) || apiKeyInput.value.trim(); }
-loadKey();
+// ---- Cihaz / model ----
+const useGPU = !!navigator.gpu;
+deviceBadge.textContent = useGPU ? "⚡ WebGPU (hızlı)" : "🐢 WASM (yavaş, GPU yok)";
+let translator = null;
+
+loadModelBtn.addEventListener("click", loadModel);
+async function loadModel(){
+  loadModelBtn.disabled = true;
+  modelProgress.classList.remove("hidden");
+  modelText.textContent = "Model indiriliyor (ilk seferde bir kez)...";
+  try{
+    translator = await pipeline("translation", MODEL_ID, {
+      device: useGPU ? "webgpu" : "wasm",
+      dtype: "q8",
+      progress_callback: (p)=>{
+        if(p.status==="progress" && p.total){
+          const pct = Math.round((p.loaded/p.total)*100);
+          modelFill.style.width = pct+"%";
+          modelText.textContent = `İndiriliyor: ${p.file||""} %${pct}`;
+        }else if(p.status==="ready" || p.status==="done"){
+          modelFill.style.width = "100%";
+        }
+      }
+    });
+    modelFill.style.width="100%";
+    modelText.textContent = "✓ Model hazır — artık çevrimdışı çalışır.";
+    loadModelBtn.textContent = "Model Hazır ✓";
+    dropzone.classList.remove("disabled");
+    dropzone.querySelector(".dz-hint").textContent = "Kaynak dil otomatik algılanır · Tamamen cihazınızda";
+  }catch(err){
+    console.error(err);
+    loadModelBtn.disabled = false;
+    modelText.textContent = "Model yüklenemedi: " + (err.message||err);
+  }
+}
 
 // ---- Dosya secimi / surukleme ----
-browseBtn.addEventListener("click", () => fileInput.click());
+browseBtn.addEventListener("click", ()=>fileInput.click());
 dropzone.addEventListener("click", (e)=>{ if(e.target!==browseBtn) fileInput.click(); });
 fileInput.addEventListener("change", ()=>{ if(fileInput.files[0]) handleFile(fileInput.files[0]); });
 ["dragenter","dragover"].forEach(ev=>dropzone.addEventListener(ev,(e)=>{e.preventDefault();dropzone.classList.add("dragover");}));
@@ -179,53 +199,44 @@ errorResetBtn.addEventListener("click", reset);
 
 function show(el){ for(const s of [dropzone,statusEl,resultEl,errorEl]) s.classList.add("hidden"); el.classList.remove("hidden"); }
 function reset(){ fileInput.value=""; progressFill.style.width="0%"; show(dropzone); }
-function fail(msg){ errorText.textContent = msg; show(errorEl); }
-const sleep = (ms) => new Promise(r=>setTimeout(r,ms));
+function fail(msg){ errorText.textContent=msg; show(errorEl); }
 
 // ---- Ana akis ----
 async function handleFile(file){
-  if(file.type!=="application/pdf"){ return fail("Lütfen bir PDF dosyası seçin."); }
-  if(!getKey()){ return fail("Önce Hugging Face token'ınızı kaydedin."); }
-  fileNameEl.textContent = file.name;
-  phaseLabel.textContent=""; progressFill.style.width="0%";
+  if(file.type!=="application/pdf") return fail("Lütfen bir PDF dosyası seçin.");
+  if(!translator) return fail("Önce modeli hazırlayın.");
+  fileNameEl.textContent=file.name; phaseLabel.textContent=""; progressFill.style.width="0%";
   progressText.textContent="PDF okunuyor..."; show(statusEl);
   try{
     const buf = new Uint8Array(await file.arrayBuffer());
     const pages = await extractPdf(buf);
     const total = pages.length;
-    phaseLabel.textContent = `0 / ${total} sayfa`;
     const translated = [];
     for(let i=0;i<total;i++){
       progressFill.style.width = Math.round((i/total)*100)+"%";
       phaseLabel.textContent = `${i+1} / ${total} sayfa`;
-      progressText.textContent = (i===0)
-        ? "Model hazırlanıyor (ilk sayfa biraz yavaş olabilir)..."
-        : `${i+1}. sayfa çevriliyor...`;
+      progressText.textContent = `${i+1}. sayfa çevriliyor...`;
       const src = detectLang(pages[i].text);
       const t = await translatePage(pages[i].text, src);
       translated.push({width:pages[i].width,height:pages[i].height,text:t});
     }
-    progressText.textContent = "Çevrilmiş PDF oluşturuluyor...";
+    progressText.textContent="Çevrilmiş PDF oluşturuluyor...";
     const out = await buildPdf(translated);
     const blob = new Blob([out],{type:"application/pdf"});
     downloadLink.href = URL.createObjectURL(blob);
-    downloadLink.download = file.name.replace(/\.pdf$/i,"") + "-turkce.pdf";
-    progressFill.style.width="100%";
-    show(resultEl);
-  }catch(err){
-    console.error(err);
-    fail(err.message || "Çeviri sırasında bir hata oluştu.");
-  }
+    downloadLink.download = file.name.replace(/\.pdf$/i,"")+"-turkce.pdf";
+    progressFill.style.width="100%"; show(resultEl);
+  }catch(err){ console.error(err); fail(err.message||"Çeviri sırasında bir hata oluştu."); }
 }
 
 // ---- PDF metin cikarma ----
 async function extractPdf(data){
   const doc = await pdfjsLib.getDocument({data, useSystemFonts:true}).promise;
-  const pages = [];
+  const pages=[];
   for(let i=1;i<=doc.numPages;i++){
-    const page = await doc.getPage(i);
-    const vp = page.getViewport({scale:1});
-    const content = await page.getTextContent();
+    const page=await doc.getPage(i);
+    const vp=page.getViewport({scale:1});
+    const content=await page.getTextContent();
     pages.push({width:vp.width, height:vp.height, text:itemsToText(content.items)});
   }
   await doc.destroy();
@@ -238,79 +249,32 @@ function itemsToText(items){
     const y = it.transform ? it.transform[5] : null;
     if(lastY!==null && y!==null){
       const dy=Math.abs(lastY-y);
-      if(dy>14) out+="\n\n";
-      else if(dy>2) out+="\n";
+      if(dy>14) out+="\n\n"; else if(dy>2) out+="\n";
       else if(out && !out.endsWith(" ") && !out.endsWith("\n")) out+=" ";
     }
-    out+=it.str;
-    if(it.hasEOL) out+="\n";
-    if(y!==null) lastY=y;
+    out+=it.str; if(it.hasEOL) out+="\n"; if(y!==null) lastY=y;
   }
   return out.replace(/[ \t]+/g," ").replace(/ *\n */g,"\n").replace(/\n{3,}/g,"\n\n").trim();
 }
 
-// ---- Ceviri (NLLB, Hugging Face Inference) ----
+// ---- Ceviri (cihaz ustu NLLB) ----
 async function translatePage(text, src){
   if(!text || !text.trim()) return "";
-  const chunks = splitText(text, MAX_CHARS);
-  const out = [];
-  for(const c of chunks) out.push(await translateChunk(c, src));
+  const out=[];
+  for(const c of splitText(text, MAX_CHARS)){
+    const res = await translator(c, { src_lang: src, tgt_lang: TGT_LANG });
+    out.push((Array.isArray(res)?res[0]:res)?.translation_text?.trim() || "");
+  }
   return out.join("\n");
 }
-async function translateChunk(text, src, attempt=0){
-  try{
-    const r = await fetch(HF_URL,{
-      method:"POST",
-      headers:{
-        "content-type":"application/json",
-        "authorization":"Bearer "+getKey(),
-        "x-wait-for-model":"true"   // model yuklenene kadar bekle
-      },
-      body:JSON.stringify({
-        inputs: text,
-        parameters: { src_lang: src, tgt_lang: TGT_LANG },
-        options: { wait_for_model: true }
-      })
-    });
-    if(!r.ok){
-      // 503: model yukleniyor, 429: hiz limiti, 5xx: gecici
-      if((r.status===503||r.status===429||r.status>=500) && attempt<6){
-        let wait = Math.min(Math.pow(2,attempt)*1500, 20000);
-        const e = await r.json().catch(()=>null);
-        if(e && e.estimated_time) wait = Math.min(e.estimated_time*1000+1000, 60000);
-        await sleep(wait);
-        return translateChunk(text, src, attempt+1);
-      }
-      if(r.status===401) throw new Error("Token geçersiz. Hugging Face token'ınızı kontrol edin.");
-      const e = await r.json().catch(()=>({}));
-      throw new Error(e?.error || `HF API hatası (HTTP ${r.status})`);
-    }
-    const data = await r.json();
-    if(Array.isArray(data) && data[0]?.translation_text) return data[0].translation_text.trim();
-    if(data?.translation_text) return data.translation_text.trim();
-    if(data?.error) throw new Error(data.error);
-    return "";
-  }catch(err){
-    if(err instanceof TypeError && attempt<6){ // ag hatasi
-      await sleep(Math.min(Math.pow(2,attempt)*1500,20000));
-      return translateChunk(text, src, attempt+1);
-    }
-    throw err;
-  }
-}
 function splitText(text, limit){
-  // Once paragraflara, sonra cumlelere gore boler; NLLB kisa girdide daha iyi.
   const out=[];
   for(const para of text.split(/\n{2,}/)){
     if(!para.trim()) continue;
     if(para.length<=limit){ out.push(para); continue; }
     let buf="";
     for(const s of (para.match(/[^.!?]+[.!?]*\s*/g) || [para])){
-      if(s.length>limit){
-        if(buf){out.push(buf);buf="";}
-        for(let i=0;i<s.length;i+=limit) out.push(s.slice(i,i+limit));
-        continue;
-      }
+      if(s.length>limit){ if(buf){out.push(buf);buf="";} for(let i=0;i<s.length;i+=limit) out.push(s.slice(i,i+limit)); continue; }
       if((buf+s).length>limit && buf){out.push(buf);buf="";}
       buf+=s;
     }
@@ -322,16 +286,14 @@ function splitText(text, limit){
 // ---- Cevrilmis PDF olusturma (gomulu font) ----
 const MARGIN=50, FONT_SIZE=11, LINE_HEIGHT=16;
 async function buildPdf(pages){
-  const pdf = await PDFDocument.create();
-  pdf.registerFontkit(fontkit);
-  const bytes = Uint8Array.from(atob(window.FONT_B64), c=>c.charCodeAt(0));
-  const font = await pdf.embedFont(bytes, {subset:true});
+  const pdf=await PDFDocument.create(); pdf.registerFontkit(fontkit);
+  const bytes=Uint8Array.from(atob(window.FONT_B64), c=>c.charCodeAt(0));
+  const font=await pdf.embedFont(bytes,{subset:true});
   for(const page of pages){
-    const w = page.width||595, h = page.height||842;
-    let cur = pdf.addPage([w,h]); let y = h-MARGIN;
-    const maxW = w-MARGIN*2;
+    const w=page.width||595, h=page.height||842;
+    let cur=pdf.addPage([w,h]); let y=h-MARGIN; const maxW=w-MARGIN*2;
     for(const line of layoutText(page.text, font, FONT_SIZE, maxW)){
-      if(y<MARGIN){ cur = pdf.addPage([w,h]); y = h-MARGIN; }
+      if(y<MARGIN){ cur=pdf.addPage([w,h]); y=h-MARGIN; }
       if(line.length>0) cur.drawText(line,{x:MARGIN,y,size:FONT_SIZE,font,color:rgb(0,0,0)});
       y-=LINE_HEIGHT;
     }
@@ -339,28 +301,22 @@ async function buildPdf(pages){
   return pdf.save();
 }
 function layoutText(text, font, size, maxW){
-  const out=[]; const paras=(text||"").split("\n");
-  for(const para of paras){
+  const out=[]; for(const para of (text||"").split("\n")){
     if(para.trim()===""){ out.push(""); continue; }
     let line="";
     for(const word of para.split(/\s+/)){
-      const cand = line ? line+" "+word : word;
-      if(font.widthOfTextAtSize(cand,size)>maxW && line){
-        out.push(line); line=breakLongWord(word,font,size,maxW,out);
-      } else line=cand;
+      const cand=line?line+" "+word:word;
+      if(font.widthOfTextAtSize(cand,size)>maxW && line){ out.push(line); line=breakLongWord(word,font,size,maxW,out); }
+      else line=cand;
     }
     if(line) out.push(line);
-  }
-  return out;
+  } return out;
 }
 function breakLongWord(word, font, size, maxW, out){
   if(font.widthOfTextAtSize(word,size)<=maxW) return word;
-  let buf="";
-  for(const ch of word){
-    if(font.widthOfTextAtSize(buf+ch,size)>maxW && buf){out.push(buf);buf=ch;}
-    else buf+=ch;
-  }
-  return buf;
+  let buf=""; for(const ch of word){
+    if(font.widthOfTextAtSize(buf+ch,size)>maxW && buf){out.push(buf);buf=ch;} else buf+=ch;
+  } return buf;
 }
 </script>
 </body>

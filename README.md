@@ -10,28 +10,29 @@ bir PDF üretir.
 - 📑 Sayfa sayfa ilerleme göstergesi
 - 🔤 ğ, ş, ı, İ, ç, ö, ü karakterleri çıktıda doğru görünür
 
-## ⚡ En kolay yol: Tarayıcıda doğrudan aç (ücretsiz, sunucu yok)
+## ⚡ Tamamen bağımsız sürüm: `cevir.html` (önerilen)
 
-**`cevir.html`** dosyasını tarayıcıda açın — telefon veya bilgisayar fark
-etmez. Çeviri için **ücretsiz** Meta NLLB-200 modeli, Hugging Face'in ücretsiz
-API'si üzerinden kullanılır (kredi/ödeme gerekmez).
+Çeviri modeli **doğrudan cihazınızda, tarayıcının içinde** çalışır.
+**Sunucu yok, API yok, token yok, kredi yok.** Model bir kez indikten sonra
+**çevrimdışı** çalışır ve hiçbir veriniz cihazınızdan çıkmaz.
 
 1. `cevir.html` ve `font-data.js` dosyalarını **aynı klasörde** tutun.
-2. `cevir.html`'i açın.
-3. **Ücretsiz bir Hugging Face token'ı** alın (kart istemez):
-   - [huggingface.co/join](https://huggingface.co/join) → kayıt olun
-   - [Settings → Access Tokens](https://huggingface.co/settings/tokens) →
-     "New token" (read yetkisi yeterli) → kopyalayın
-4. Token'ı kutuya yapıştırıp **Kaydet**'e basın (yalnızca tarayıcınızda,
-   `localStorage`'da saklanır — hiçbir sunucuya gönderilmez).
-5. PDF'i sürükleyip bırakın; çeviri bitince indirin.
+2. `cevir.html`'i açın (telefon veya bilgisayar fark etmez).
+3. **"Modeli İndir ve Hazırla"**ya basın. Meta NLLB-200 modeli ilk seferde
+   bir kez (~300–600 MB) iner ve tarayıcınızda saklanır.
+4. Model hazır olunca PDF'i sürükleyip bırakın; çeviri bitince indirin.
 
-> İnternet bağlantısı gerekir. İlk sayfa, model yüklenirken biraz yavaş
-> olabilir (sonrakiler hızlanır). Ücretsiz katmanda günlük kullanım sınırı
-> vardır; büyük belgelerde "tekrar dene" gerekebilir.
+> **Gereksinimler:** Modern bir cihaz ve tarayıcı. **WebGPU** destekleyen
+> tarayıcılarda (güncel Chrome/Edge) çok daha hızlıdır; yoksa WASM ile yavaş
+> çalışır. İlk indirme için iyi bir bağlantı ve yeterli depolama gerekir.
 >
 > **Kaynak dil otomatik algılanır** (tarayıcıda, `franc` ile) ve NLLB ile
-> Türkçe'ye çevrilir. Token'ınızı kimseyle paylaşmayın.
+> Türkçe'ye çevrilir. Tüm işlem cihazınızda olur.
+
+### Neden tamamen bağımsız?
+- Çeviri motoru (NLLB-200) ONNX olarak `transformers.js` ile **cihazda** koşar.
+- İlk yüklemeden sonra **internet gerekmez**; metin hiçbir sunucuya gitmez.
+- Kalite, telefonda çalışabilen en iyi açık model seviyesindedir (Google'a yakın).
 
 ## Alternatif: Claude (Node.js sunucu, en yüksek kalite, ücretli)
 
