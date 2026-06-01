@@ -34,6 +34,16 @@ bir PDF üretir.
 - İlk yüklemeden sonra **internet gerekmez**; metin hiçbir sunucuya gitmez.
 - Kalite, telefonda çalışabilen en iyi açık model seviyesindedir (Google'a yakın).
 
+### Özellikler
+- 🧵 **Arka planda çalışma:** Çeviri bir Web Worker'da yapılır, arayüz donmaz
+  (Worker oluşturulamazsa ana iş parçacığına otomatik geçilir).
+- ⚙️ **Otomatik cihaz seçimi:** Önce WebGPU denenir, olmazsa WASM'a düşülür.
+- 🚀 **Mod seçimi:** Denge (q8) / Hızlı-düşük bellek (q4) / Kalite (fp16).
+- 🔁 **Çeviri önbelleği:** Tekrar eden satırlar (üstbilgi/altbilgi) bir kez çevrilir.
+- ⏱️ **İlerleme + kalan süre:** Parça bazında yüzde ve ETA gösterilir.
+- ⛔ **İptal:** Çeviriyi istediğiniz an durdurabilirsiniz.
+- 💾 **Kalıcı önbellek:** Model, tarayıcıda kalıcı depolanmaya çalışılır (yeniden inmez).
+
 ## Alternatif: Claude (Node.js sunucu, en yüksek kalite, ücretli)
 
 Aşağıdaki sunucu sürümü Anthropic Claude API kullanır; en kaliteli çeviriyi
