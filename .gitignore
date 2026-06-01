@@ -5,3 +5,7 @@ output/
 *.log
 .DS_Store
 assets/fonts/*.ttf
+
+# Egitilen modeller (kullanici uretir)
+/model.json
+*.model.json

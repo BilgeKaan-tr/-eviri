@@ -10,6 +10,36 @@ bir PDF üretir.
 - 📑 Sayfa sayfa ilerleme göstergesi
 - 🔤 ğ, ş, ı, İ, ç, ö, ü karakterleri çıktıda doğru görünür
 
+## 🧪 Kendi çeviri motorumuz (sıfırdan, bağımsız) — `src/mt/`
+
+Hiçbir dış model/servis kullanmadan, **paralel metinden öğrenen** kendi
+istatistiksel çeviri motorumuz (SMT). Mantığı: iki dilli (kaynak ↔ Türkçe)
+hizalı metni verirsiniz, motor **IBM Model 1 (EM algoritması)** ile kelime
+karşılıklarını öğrenir, bir Türkçe **n-gram dil modeli** ile akıcılığı sağlar
+ve yeni cümleleri çevirir.
+
+```bash
+# 1) Eğit (hizalı cümle çiftlerinden)
+node scripts/mt-train.js --tsv data/ornek-paralel.tsv --out model.json --iter 30
+
+# 2) Çevir
+node scripts/mt-translate.js --model model.json --text "the white dog is big"
+# -> Beyaz köpek büyük
+
+# Hızlı kanıt gösterimi (öğrenmeyi gösterir)
+node scripts/mt-demo.mjs
+```
+
+**Veri biçimi:** `--tsv` ile her satır `kaynak<TAB>türkçe`; veya `--src en.txt
+--tgt tr.txt` ile satır satır hizalı iki dosya.
+
+**Dürüst beklenti:** Bu motor *gerçekten öğrenir* ve verdiğiniz veri arttıkça
+gelişir; tamamen bizim, bağımsız ve çevrimdışıdır. Ancak kalite, sinir ağı
+modellerinin (NLLB/Google) altındadır — onlar yüz milyonlarca cümleyle eğitilir.
+İki kitap, kelime/öbek karşılıklarını öğrenmeye yeter ama karmaşık dilbilgisi ve
+kelime sırasında sınırlı kalır. Yol haritası: öbek-tabanlı çeviri (phrase-based),
+ham kitaplar için otomatik cümle hizalama, daha güçlü dil modeli.
+
 ## ⚡ Tamamen bağımsız sürüm: `cevir.html` (önerilen)
 
 Çeviri modeli **doğrudan cihazınızda, tarayıcının içinde** çalışır.

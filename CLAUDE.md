@@ -33,6 +33,17 @@ ve birim testlerle doğrulanır. Gerçek test kullanıcının cihazında yapıl�
 - `src/extract.js` (pdfjs), `src/translate.js` (Claude, chunk + retry), `src/build.js` (pdf-lib).
 - `scripts/download-font.js` DejaVu fontunu indirir. `.env` içinde `ANTHROPIC_API_KEY`.
 
+## 3) Kendi istatistiksel çeviri motoru — `src/mt/`
+
+Sıfırdan, bağımsız SMT motoru. Paralel metinden öğrenir, dış bağımlılık yok.
+- `src/mt/engine.js`: tokenize, **IBM Model 1 (EM)** ile `t(tgt|src)`, Türkçe
+  bigram dil modeli, monoton beam çözücü (yayvan dağılımlı işlev kelimeleri NULL
+  ile düşürülür), `serialize`/`deserialize`, yüksek seviye `buildModel`/`translate`.
+- `scripts/mt-train.js` (TSV veya iki hizalı dosya → `model.json`),
+  `scripts/mt-translate.js`, `scripts/mt-demo.mjs` (öğrenme kanıtı).
+- Tamamen Node ile test edilebilir (tarayıcı/CDN gerekmez). Yol haritası:
+  öbek-tabanlı çeviri, otomatik cümle hizalama, tarayıcıya entegrasyon.
+
 ## Geliştirme notları
 - Tarayıcı tarafı JS değişikliğinden sonra: script'i çıkarıp `node --check` ile sözdizimini doğrula.
 - `font-data.js` (~986 KB base64) gereklidir; `cevir.html` ile aynı klasörde bulunmalıdır.
