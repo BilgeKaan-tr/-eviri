@@ -10,7 +10,22 @@ bir PDF üretir.
 - 📑 Sayfa sayfa ilerleme göstergesi
 - 🔤 ğ, ş, ı, İ, ç, ö, ü karakterleri çıktıda doğru görünür
 
-## Kurulum
+## ⚡ En kolay yol: Tarayıcıda doğrudan aç (sunucu yok)
+
+Terminal/kurulum istemiyorsanız **`cevir.html`** dosyasını çift tıklayıp
+tarayıcıda açın. Hepsi tarayıcınızda çalışır.
+
+1. `cevir.html` ve `font-data.js` dosyalarını **aynı klasörde** tutun.
+2. `cevir.html`'i çift tıklayarak açın.
+3. Anthropic API anahtarınızı kutuya yapıştırıp **Kaydet**'e basın
+   (anahtar yalnızca tarayıcınızda, `localStorage`'da saklanır — hiçbir
+   sunucuya gönderilmez).
+4. PDF'i sürükleyip bırakın; çeviri bitince indirin.
+
+> İnternet bağlantısı gerekir (PDF kütüphaneleri CDN'den, çeviri Anthropic
+> API'sinden gelir). Anahtarınızı kimseyle paylaşmayın.
+
+## Kurulum (Node.js sunucu sürümü)
 
 1. **Bağımlılıkları kurun:**
 

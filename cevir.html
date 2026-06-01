@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>PDF Çeviri — Türkçe</title>
+<style>
+  :root{--bg:#0f1115;--card:#1a1d24;--border:#2a2f3a;--text:#e7e9ee;--muted:#9aa0ac;--accent:#6d8bff;--accent-2:#8a6dff;--ok:#3ecf8e;--err:#ff6b6b}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:radial-gradient(1200px 600px at 50% -10%,#1b2030,var(--bg));color:var(--text);min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}
+  .app{width:100%;max-width:560px}
+  header{text-align:center;margin-bottom:24px}
+  h1{font-size:32px;letter-spacing:-.5px}
+  .subtitle{color:var(--muted);margin-top:8px}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:18px;padding:20px;margin-bottom:16px}
+  .key-row{display:flex;gap:8px;align-items:center}
+  .key-row input{flex:1;background:#232733;border:1px solid var(--border);color:var(--text);padding:10px 12px;border-radius:10px;font-size:14px;font-family:monospace}
+  .key-label{display:flex;justify-content:space-between;align-items:center;font-size:13px;color:var(--muted);margin-bottom:8px}
+  .key-status{font-size:12px}
+  .key-status.ok{color:var(--ok)}
+  .dropzone{background:var(--card);border:2px dashed var(--border);border-radius:18px;padding:44px 24px;text-align:center;cursor:pointer;transition:border-color .2s,background .2s,transform .1s}
+  .dropzone.dragover{border-color:var(--accent);background:#1d2230;transform:scale(1.01)}
+  .dropzone.disabled{opacity:.5;pointer-events:none}
+  .dz-icon{font-size:40px;margin-bottom:12px}
+  .dz-text{font-size:18px;font-weight:600}
+  .dz-or{color:var(--muted);margin:10px 0;font-size:14px}
+  .dz-hint{color:var(--muted);font-size:13px;margin-top:16px}
+  .btn{display:inline-block;border:1px solid var(--border);background:#232733;color:var(--text);padding:10px 20px;border-radius:10px;font-size:15px;font-weight:600;cursor:pointer;text-decoration:none;transition:filter .15s,transform .1s}
+  .btn:hover{filter:brightness(1.15)}.btn:active{transform:translateY(1px)}
+  .btn-primary{background:linear-gradient(135deg,var(--accent),var(--accent-2));border:none;color:#fff}
+  .btn-ghost{background:transparent}
+  .status,.result,.error{background:var(--card);border:1px solid var(--border);border-radius:18px;padding:28px;text-align:center}
+  .file-row{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}
+  .file-name{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:70%}
+  .phase{color:var(--accent);font-size:13px;font-weight:600}
+  .progress-bar{height:10px;background:#232733;border-radius:999px;overflow:hidden}
+  .progress-fill{height:100%;width:0;background:linear-gradient(90deg,var(--accent),var(--accent-2));border-radius:999px;transition:width .3s ease}
+  .progress-text{margin-top:12px;color:var(--muted);font-size:14px}
+  .result-icon{font-size:44px;margin-bottom:8px}
+  .result-text{font-size:18px;font-weight:600;margin-bottom:18px}
+  .result .btn,.error .btn{margin:6px}
+  .error .result-text{color:var(--err);font-size:15px;font-weight:500}
+  footer{text-align:center;color:var(--muted);font-size:12px;margin-top:20px}
+  .hidden{display:none}
+</style>
+</head>
+<body>
+<main class="app">
+  <header>
+    <h1>📄 PDF Çeviri</h1>
+    <p class="subtitle">PDF dosyanızı yükleyin, tamamını Türkçe'ye çevirelim.</p>
+  </header>
+
+  <div class="card">
+    <div class="key-label">
+      <span>🔑 Anthropic API Anahtarı</span>
+      <span id="keyStatus" class="key-status">kaydedilmedi</span>
+    </div>
+    <div class="key-row">
+      <input type="password" id="apiKey" placeholder="sk-ant-..." autocomplete="off" />
+      <button type="button" id="saveKey" class="btn">Kaydet</button>
+    </div>
+  </div>
+
+  <section id="dropzone" class="dropzone disabled">
+    <input type="file" id="fileInput" accept="application/pdf" hidden />
+    <div class="dz-inner">
+      <div class="dz-icon">⬆️</div>
+      <p class="dz-text">PDF dosyasını buraya sürükleyin</p>
+      <p class="dz-or">veya</p>
+      <button type="button" id="browseBtn" class="btn">Dosya Seç</button>
+      <p class="dz-hint">Kaynak dil otomatik algılanır · Tamamı çevrilir</p>
+    </div>
+  </section>
+
+  <section id="status" class="status hidden">
+    <div class="file-row">
+      <span id="fileName" class="file-name"></span>
+      <span id="phaseLabel" class="phase"></span>
+    </div>
+    <div class="progress-bar"><div id="progressFill" class="progress-fill"></div></div>
+    <p id="progressText" class="progress-text">Hazırlanıyor...</p>
+  </section>
+
+  <section id="result" class="result hidden">
+    <div class="result-icon">✅</div>
+    <p class="result-text">Çeviri tamamlandı!</p>
+    <a id="downloadLink" class="btn btn-primary" download>Çevrilmiş PDF'i İndir</a>
+    <button type="button" id="resetBtn" class="btn btn-ghost">Yeni Dosya</button>
+  </section>
+
+  <section id="error" class="error hidden">
+    <div class="result-icon">⚠️</div>
+    <p id="errorText" class="result-text"></p>
+    <button type="button" id="errorResetBtn" class="btn btn-ghost">Tekrar Dene</button>
+  </section>
+
+  <footer><p>Tamamı tarayıcınızda çalışır · Anahtarınız yalnızca bu cihazda saklanır</p></footer>
+</main>
+
+<!-- PDF kutuphaneleri (CDN, UMD global olarak yuklenir) -->
+<script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@pdf-lib/fontkit@1.1.1/dist/fontkit.umd.min.js"></script>
+<!-- Gomulu Turkce font (DejaVu Sans, base64) -->
+<script src="font-data.js"></script>
+
+<script type="module">
+import * as pdfjsLib from "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.min.mjs";
+pdfjsLib.GlobalWorkerOptions.workerSrc =
+  "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.worker.min.mjs";
+
+const { PDFDocument, rgb } = PDFLib;
+const CLAUDE_MODEL = "claude-sonnet-4-6";
+const MAX_CHARS = 6000;
+const SYSTEM_PROMPT = `Sen profesyonel bir ceviri motorusun. Sana verilen metni, kaynak dili ne olursa olsun, akici ve dogal bir TURKCE'ye cevir.
+
+Kurallar:
+- SADECE cevrilmis metni dondur. Aciklama, yorum, baslik veya not ekleme.
+- Metnin tamamini eksiksiz cevir; hicbir cumleyi atlama veya ozetleme.
+- Paragraf ve satir yapisini mumkun oldugunca koru.
+- Ozel isimler, kod, URL, e-posta ve sayilar oldugu gibi kalsin.
+- Metin parcali veya baglamsiz gorunse bile yine de cevir; soru sorma.
+- Zaten Turkce olan kisimlari oldugu gibi birak.`;
+
+// ---- DOM ----
+const $ = (id) => document.getElementById(id);
+const apiKeyInput = $("apiKey"), saveKeyBtn = $("saveKey"), keyStatus = $("keyStatus");
+const dropzone = $("dropzone"), fileInput = $("fileInput"), browseBtn = $("browseBtn");
+const statusEl = $("status"), resultEl = $("result"), errorEl = $("error");
+const fileNameEl = $("fileName"), phaseLabel = $("phaseLabel");
+const progressFill = $("progressFill"), progressText = $("progressText");
+const downloadLink = $("downloadLink"), resetBtn = $("resetBtn");
+const errorResetBtn = $("errorResetBtn"), errorText = $("errorText");
+
+// ---- API anahtari (localStorage) ----
+const KEY_STORE = "anthropic_api_key";
+function loadKey(){
+  const k = localStorage.getItem(KEY_STORE);
+  if(k){ apiKeyInput.value = k; markKeySaved(); }
+}
+function markKeySaved(){
+  keyStatus.textContent = "✓ kaydedildi"; keyStatus.classList.add("ok");
+  dropzone.classList.remove("disabled");
+}
+saveKeyBtn.addEventListener("click", () => {
+  const k = apiKeyInput.value.trim();
+  if(!k.startsWith("sk-ant-")){ keyStatus.textContent="geçersiz anahtar"; keyStatus.classList.remove("ok"); return; }
+  localStorage.setItem(KEY_STORE, k); markKeySaved();
+});
+function getKey(){ return localStorage.getItem(KEY_STORE) || apiKeyInput.value.trim(); }
+loadKey();
+
+// ---- Dosya secimi / surukleme ----
+browseBtn.addEventListener("click", () => fileInput.click());
+dropzone.addEventListener("click", (e)=>{ if(e.target!==browseBtn) fileInput.click(); });
+fileInput.addEventListener("change", ()=>{ if(fileInput.files[0]) handleFile(fileInput.files[0]); });
+["dragenter","dragover"].forEach(ev=>dropzone.addEventListener(ev,(e)=>{e.preventDefault();dropzone.classList.add("dragover");}));
+["dragleave","drop"].forEach(ev=>dropzone.addEventListener(ev,(e)=>{e.preventDefault();dropzone.classList.remove("dragover");}));
+dropzone.addEventListener("drop",(e)=>{ const f=e.dataTransfer.files[0]; if(f) handleFile(f); });
+resetBtn.addEventListener("click", reset);
+errorResetBtn.addEventListener("click", reset);
+
+function show(el){ for(const s of [dropzone,statusEl,resultEl,errorEl]) s.classList.add("hidden"); el.classList.remove("hidden"); }
+function reset(){ fileInput.value=""; progressFill.style.width="0%"; show(dropzone); }
+function fail(msg){ errorText.textContent = msg; show(errorEl); }
+
+// ---- Ana akis ----
+async function handleFile(file){
+  if(file.type!=="application/pdf"){ return fail("Lütfen bir PDF dosyası seçin."); }
+  if(!getKey()){ return fail("Önce API anahtarınızı kaydedin."); }
+  fileNameEl.textContent = file.name;
+  phaseLabel.textContent=""; progressFill.style.width="0%";
+  progressText.textContent="PDF okunuyor..."; show(statusEl);
+  try{
+    const buf = new Uint8Array(await file.arrayBuffer());
+    const pages = await extractPdf(buf);
+    const total = pages.length;
+    phaseLabel.textContent = `0 / ${total} sayfa`;
+    const translated = [];
+    for(let i=0;i<total;i++){
+      const pct = Math.round((i/total)*100);
+      progressFill.style.width = pct+"%";
+      phaseLabel.textContent = `${i+1} / ${total} sayfa`;
+      progressText.textContent = `${i+1}. sayfa çevriliyor...`;
+      const t = await translateText(pages[i].text);
+      translated.push({width:pages[i].width,height:pages[i].height,text:t});
+    }
+    progressText.textContent = "Çevrilmiş PDF oluşturuluyor...";
+    const out = await buildPdf(translated);
+    const blob = new Blob([out],{type:"application/pdf"});
+    downloadLink.href = URL.createObjectURL(blob);
+    downloadLink.download = file.name.replace(/\.pdf$/i,"") + "-turkce.pdf";
+    progressFill.style.width="100%";
+    show(resultEl);
+  }catch(err){
+    console.error(err);
+    fail(err.message || "Çeviri sırasında bir hata oluştu.");
+  }
+}
+
+// ---- PDF metin cikarma ----
+async function extractPdf(data){
+  const doc = await pdfjsLib.getDocument({data, useSystemFonts:true}).promise;
+  const pages = [];
+  for(let i=1;i<=doc.numPages;i++){
+    const page = await doc.getPage(i);
+    const vp = page.getViewport({scale:1});
+    const content = await page.getTextContent();
+    pages.push({width:vp.width, height:vp.height, text:itemsToText(content.items)});
+  }
+  await doc.destroy();
+  return pages;
+}
+function itemsToText(items){
+  let out="", lastY=null;
+  for(const it of items){
+    if(typeof it.str!=="string") continue;
+    const y = it.transform ? it.transform[5] : null;
+    if(lastY!==null && y!==null){
+      const dy=Math.abs(lastY-y);
+      if(dy>14) out+="\n\n";
+      else if(dy>2) out+="\n";
+      else if(out && !out.endsWith(" ") && !out.endsWith("\n")) out+=" ";
+    }
+    out+=it.str;
+    if(it.hasEOL) out+="\n";
+    if(y!==null) lastY=y;
+  }
+  return out.replace(/[ \t]+/g," ").replace(/ *\n */g,"\n").replace(/\n{3,}/g,"\n\n").trim();
+}
+
+// ---- Ceviri (Anthropic API, dogrudan tarayicidan) ----
+async function translateText(text){
+  if(!text || !text.trim()) return "";
+  const chunks = splitText(text, MAX_CHARS);
+  const res = [];
+  for(const c of chunks) res.push(await translateChunk(c));
+  return res.join("\n");
+}
+async function translateChunk(text, attempt=0){
+  try{
+    const r = await fetch("https://api.anthropic.com/v1/messages",{
+      method:"POST",
+      headers:{
+        "content-type":"application/json",
+        "x-api-key":getKey(),
+        "anthropic-version":"2023-06-01",
+        "anthropic-dangerous-direct-browser-access":"true"
+      },
+      body:JSON.stringify({
+        model:CLAUDE_MODEL, max_tokens:8192, system:SYSTEM_PROMPT,
+        messages:[{role:"user",content:`Asagidaki metni Turkceye cevir:\n\n${text}`}]
+      })
+    });
+    if(!r.ok){
+      if((r.status===429||r.status===529||r.status>=500) && attempt<4){
+        await new Promise(res=>setTimeout(res,Math.pow(2,attempt)*1000));
+        return translateChunk(text, attempt+1);
+      }
+      const e = await r.json().catch(()=>({}));
+      const m = e?.error?.message || `API hatası (HTTP ${r.status})`;
+      if(r.status===401) throw new Error("API anahtarı geçersiz. Lütfen anahtarınızı kontrol edin.");
+      throw new Error(m);
+    }
+    const data = await r.json();
+    return (data.content||[]).filter(b=>b.type==="text").map(b=>b.text).join("").trim();
+  }catch(err){
+    if(err instanceof TypeError && attempt<4){ // ag hatasi
+      await new Promise(res=>setTimeout(res,Math.pow(2,attempt)*1000));
+      return translateChunk(text, attempt+1);
+    }
+    throw err;
+  }
+}
+function splitText(text, limit){
+  if(text.length<=limit) return [text];
+  const paras = text.split(/\n{2,}/); const chunks=[]; let cur="";
+  for(const p of paras){
+    if(p.length>limit){
+      if(cur){chunks.push(cur);cur="";}
+      for(const s of splitLong(p,limit)){
+        if((cur+s).length>limit && cur){chunks.push(cur);cur="";}
+        cur+=(cur?" ":"")+s;
+      }
+      continue;
+    }
+    if((cur+"\n\n"+p).length>limit && cur){chunks.push(cur);cur="";}
+    cur+=(cur?"\n\n":"")+p;
+  }
+  if(cur) chunks.push(cur);
+  return chunks;
+}
+function splitLong(text, limit){
+  const sents = text.match(/[^.!?]+[.!?]*\s*/g) || [text];
+  const out=[]; let buf="";
+  for(const s of sents){
+    if(s.length>limit){ for(let i=0;i<s.length;i+=limit) out.push(s.slice(i,i+limit)); continue; }
+    if((buf+s).length>limit && buf){out.push(buf);buf="";}
+    buf+=s;
+  }
+  if(buf) out.push(buf);
+  return out;
+}
+
+// ---- Cevrilmis PDF olusturma (gomulu font) ----
+const MARGIN=50, FONT_SIZE=11, LINE_HEIGHT=16;
+async function buildPdf(pages){
+  const pdf = await PDFDocument.create();
+  pdf.registerFontkit(fontkit);
+  const bytes = Uint8Array.from(atob(window.FONT_B64), c=>c.charCodeAt(0));
+  const font = await pdf.embedFont(bytes, {subset:true});
+  for(const page of pages){
+    const w = page.width||595, h = page.height||842;
+    let cur = pdf.addPage([w,h]); let y = h-MARGIN;
+    const maxW = w-MARGIN*2;
+    for(const line of layoutText(page.text, font, FONT_SIZE, maxW)){
+      if(y<MARGIN){ cur = pdf.addPage([w,h]); y = h-MARGIN; }
+      if(line.length>0) cur.drawText(line,{x:MARGIN,y,size:FONT_SIZE,font,color:rgb(0,0,0)});
+      y-=LINE_HEIGHT;
+    }
+  }
+  return pdf.save();
+}
+function layoutText(text, font, size, maxW){
+  const out=[]; const paras=(text||"").split("\n");
+  for(const para of paras){
+    if(para.trim()===""){ out.push(""); continue; }
+    let line="";
+    for(const word of para.split(/\s+/)){
+      const cand = line ? line+" "+word : word;
+      if(font.widthOfTextAtSize(cand,size)>maxW && line){
+        out.push(line); line=breakLongWord(word,font,size,maxW,out);
+      } else line=cand;
+    }
+    if(line) out.push(line);
+  }
+  return out;
+}
+function breakLongWord(word, font, size, maxW, out){
+  if(font.widthOfTextAtSize(word,size)<=maxW) return word;
+  let buf="";
+  for(const ch of word){
+    if(font.widthOfTextAtSize(buf+ch,size)>maxW && buf){out.push(buf);buf=ch;}
+    else buf+=ch;
+  }
+  return buf;
+}
+</script>
+</body>
+</html>
