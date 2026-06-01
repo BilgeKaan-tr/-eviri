@@ -10,20 +10,33 @@ bir PDF üretir.
 - 📑 Sayfa sayfa ilerleme göstergesi
 - 🔤 ğ, ş, ı, İ, ç, ö, ü karakterleri çıktıda doğru görünür
 
-## ⚡ En kolay yol: Tarayıcıda doğrudan aç (sunucu yok)
+## ⚡ En kolay yol: Tarayıcıda doğrudan aç (ücretsiz, sunucu yok)
 
-Terminal/kurulum istemiyorsanız **`cevir.html`** dosyasını çift tıklayıp
-tarayıcıda açın. Hepsi tarayıcınızda çalışır.
+**`cevir.html`** dosyasını tarayıcıda açın — telefon veya bilgisayar fark
+etmez. Çeviri için **ücretsiz** Meta NLLB-200 modeli, Hugging Face'in ücretsiz
+API'si üzerinden kullanılır (kredi/ödeme gerekmez).
 
 1. `cevir.html` ve `font-data.js` dosyalarını **aynı klasörde** tutun.
-2. `cevir.html`'i çift tıklayarak açın.
-3. Anthropic API anahtarınızı kutuya yapıştırıp **Kaydet**'e basın
-   (anahtar yalnızca tarayıcınızda, `localStorage`'da saklanır — hiçbir
-   sunucuya gönderilmez).
-4. PDF'i sürükleyip bırakın; çeviri bitince indirin.
+2. `cevir.html`'i açın.
+3. **Ücretsiz bir Hugging Face token'ı** alın (kart istemez):
+   - [huggingface.co/join](https://huggingface.co/join) → kayıt olun
+   - [Settings → Access Tokens](https://huggingface.co/settings/tokens) →
+     "New token" (read yetkisi yeterli) → kopyalayın
+4. Token'ı kutuya yapıştırıp **Kaydet**'e basın (yalnızca tarayıcınızda,
+   `localStorage`'da saklanır — hiçbir sunucuya gönderilmez).
+5. PDF'i sürükleyip bırakın; çeviri bitince indirin.
 
-> İnternet bağlantısı gerekir (PDF kütüphaneleri CDN'den, çeviri Anthropic
-> API'sinden gelir). Anahtarınızı kimseyle paylaşmayın.
+> İnternet bağlantısı gerekir. İlk sayfa, model yüklenirken biraz yavaş
+> olabilir (sonrakiler hızlanır). Ücretsiz katmanda günlük kullanım sınırı
+> vardır; büyük belgelerde "tekrar dene" gerekebilir.
+>
+> **Kaynak dil otomatik algılanır** (tarayıcıda, `franc` ile) ve NLLB ile
+> Türkçe'ye çevrilir. Token'ınızı kimseyle paylaşmayın.
+
+## Alternatif: Claude (Node.js sunucu, en yüksek kalite, ücretli)
+
+Aşağıdaki sunucu sürümü Anthropic Claude API kullanır; en kaliteli çeviriyi
+verir ama Anthropic hesabında **kredi** gerektirir.
 
 ## Kurulum (Node.js sunucu sürümü)
 
