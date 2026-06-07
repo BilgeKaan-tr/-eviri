@@ -37,7 +37,7 @@ out += `
 // ---- Tarayıcı/worker API'si ----
 self.MT = {
   buildPhraseModel, translatePhrase, serializePhrase, deserializePhrase,
-  mergeModels, alignTexts, tuneWeights, evaluate, corpusBleu, tokenize,
+  mergeModels, alignTexts, tuneWeights, evaluate, corpusBleu, tokenize, mergeDictionary,
   buildModel, translate,
 };
 `;

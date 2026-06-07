@@ -78,6 +78,8 @@
       <button type="button" id="bleuBtn" class="btn" disabled>BLEU hesapla</button>
       <button type="button" id="tuneBtn" class="btn" disabled>Otomatik ayarla</button>
     </div>
+    <p class="muted" style="margin-top:6px">Kendi <b>sözlüğünüzü</b> (kelime⇥karşılık TSV) ekleyebilirsiniz; bilinmeyen kelimelerde kullanılır.</p>
+    <div class="row"><label>Sözlük TSV: <input type="file" id="dictInput" accept=".tsv,.txt" /></label></div>
     <p id="qualityText" class="progress-text"></p>
   </div>
 
@@ -144,7 +146,7 @@ self.onmessage = (e) => {
 const makeWorker = () => new Worker(URL.createObjectURL(new Blob([MT_BUNDLE + WORKER_HANDLER], { type: "text/javascript" })));
 
 const $ = (id) => document.getElementById(id);
-let model = null, modelJson = null, devPairs = null;
+let model = null, modelJson = null, devPairs = null, baseJson = null, dictEntries = null;
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 const show = (el) => { for (const s of [dropzone, statusEl, resultEl, errorEl]) s.classList.add("hidden"); el.classList.remove("hidden"); };
 
@@ -168,22 +170,42 @@ async function readModelFile(file){
   }
   return new TextDecoder().decode(buf);
 }
-async function modelReady(json, pairs, phrases){
-  modelJson = json; model = MT.deserializePhrase(json);
-  modelBadge.textContent = `✓ model hazır${pairs?` · ${pairs} cümle`:""}${phrases?` · ${phrases} öbek`:""}`;
+let tunedWeights = null, metaPairs = 0, metaPhrases = 0;
+// Temel modeli (baseJson) + sözlük + ayarlı ağırlıklarla nihai modeli kur.
+// Tek yerden türetildiği için sözlük/ağırlık asla iki kez uygulanmaz.
+async function finalize(){
+  model = MT.deserializePhrase(baseJson);
+  if (dictEntries && dictEntries.length) MT.mergeDictionary(model, dictEntries);
+  if (tunedWeights) model.weights = tunedWeights;
+  modelJson = MT.serializePhrase(model);
+  modelBadge.textContent = `✓ model hazır${metaPairs?` · ${metaPairs} cümle`:""}${metaPhrases?` · ${metaPhrases} öbek`:""}${dictEntries&&dictEntries.length?` · +${dictEntries.length} sözlük`:""}${tunedWeights?` · ayarlı`:""}`;
   dropzone.classList.remove("disabled");
   dropzone.querySelector(".dz-hint").textContent = "Kaynak → Türkçe";
   bleuBtn.disabled = false; tuneBtn.disabled = false;
   if ("CompressionStream" in window) {
-    const gz = new Blob([json]).stream().pipeThrough(new CompressionStream("gzip"));
+    const gz = new Blob([modelJson]).stream().pipeThrough(new CompressionStream("gzip"));
     saveModel.href = URL.createObjectURL(await new Response(gz).blob());
     saveModel.download = "model.json.gz"; saveModel.textContent = "modeli indir (.gz)";
   } else {
-    saveModel.href = URL.createObjectURL(new Blob([json], { type: "application/json" }));
+    saveModel.href = URL.createObjectURL(new Blob([modelJson], { type: "application/json" }));
     saveModel.download = "model.json"; saveModel.textContent = "modeli indir";
   }
   saveModel.classList.remove("hidden");
 }
+async function modelReady(json, pairs, phrases){
+  baseJson = json; metaPairs = pairs || 0; metaPhrases = phrases || 0; tunedWeights = null;
+  await finalize();
+}
+// Sözlük yükle: bilinmeyen kelimelerde kullanılacak kullanıcı sözlüğü
+$("dictInput").addEventListener("change", async () => {
+  const f = $("dictInput").files[0]; if (!f) { dictEntries = null; return; }
+  dictEntries = [];
+  for (const line of (await f.text()).split(/\r?\n/)) {
+    if (!line.trim()) continue; const [s, t] = line.split("\t"); if (s && t) dictEntries.push({ src: s, tgt: t });
+  }
+  qualityText.textContent = `${dictEntries.length} sözlük girdisi yüklendi.`;
+  if (baseJson) await finalize(); // mevcut modele uygula (çift uygulanmaz)
+});
 
 // Tüm yüklenenlerden paralel cümle çiftlerini topla
 async function collectPairs(){
@@ -275,8 +297,7 @@ tuneBtn.addEventListener("click", () => {
   w.onmessage = async (e) => {
     const d = e.data; w.terminate(); tuneBtn.disabled = false;
     if (d.type === "tuned") {
-      model.weights = d.weights;
-      await modelReady(MT.serializePhrase(model)); // ağırlıkları modele göm + indirmeyi güncelle
+      tunedWeights = d.weights; await finalize(); // base+sözlük+ağırlık tek yerden
       qualityText.innerHTML = `BLEU: ${(d.startBleu * 100).toFixed(1)} → <span class="big">${(d.bleu * 100).toFixed(1)}</span> · ağırlıklar uygulandı`;
     } else { qualityText.textContent = "Ayar hatası: " + (d.message || ""); }
   };

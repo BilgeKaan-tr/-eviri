@@ -186,6 +186,27 @@ export function buildPhraseModel(parallel, opts = {}) {
   };
 }
 
+// Kullanıcı sözlüğünü modele kat (tek/çok kelimelik öbek olarak).
+// entries: [{src, tgt}]. Bilinmeyen kelimelerde otorite sağlar; öğrenilen
+// güçlü öbekleri ezmez (sayım ağırlığı ile dengelenir). Trie/çözücü ile uyumlu.
+export function mergeDictionary(model, entries, weight = 2) {
+  for (const { src, tgt } of entries) {
+    const s = tokenize(src, model.srcLang || "en").join(" ");
+    const t = tokenize(tgt, "tr").join(" ");
+    if (!s || !t) continue;
+    let mm = model.pcounts.get(s);
+    if (!mm) model.pcounts.set(s, (mm = new Map()));
+    const prev = mm.get(t);
+    if (prev) prev[0] += weight; else mm.set(t, [weight, 1]); // lex=1 (tam güven)
+    model.scounts.set(s, (model.scounts.get(s) || 0) + weight);
+  }
+  model.ptable = derivePtable(model.pcounts, model.scounts, {
+    minCount: model.minCount || 1, maxCand: model.maxCand || 20,
+  });
+  delete model._trie; // trie yeniden kurulsun
+  return model;
+}
+
 // Sayım değerinden [count, lex] oku (eski biçimde değer salt sayıdır)
 const cOf = (v) => (Array.isArray(v) ? v[0] : v);
 const lexOf = (v) => (Array.isArray(v) ? v[1] : 1);

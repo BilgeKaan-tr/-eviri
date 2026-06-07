@@ -13,7 +13,7 @@
 import fs from "node:fs";
 import zlib from "node:zlib";
 import { buildModel, serialize } from "../src/mt/engine.js";
-import { buildPhraseModel, serializePhrase } from "../src/mt/phrase.js";
+import { buildPhraseModel, serializePhrase, mergeDictionary } from "../src/mt/phrase.js";
 
 function arg(name, def) {
   const i = process.argv.indexOf(name);
@@ -61,8 +61,14 @@ if (useWord) {
   info = `öğrenilen kaynak kelime: ${model.t.size}`;
 } else {
   const model = buildPhraseModel(parallel, { srcLang, iterations, maxPhrase, minCount, stem });
+  const dictPath = arg("--dict");
+  if (dictPath) {
+    const ents = [];
+    for (const line of fs.readFileSync(dictPath, "utf8").split(/\r?\n/)) { if(!line.trim())continue; const [a,b]=line.split("\t"); if(a&&b) ents.push({src:a,tgt:b}); }
+    mergeDictionary(model, ents);
+    info = `öğrenilen öbek sayısı: ${model.ptable.size} (+sözlük ${ents.length})`;
+  } else { info = `öğrenilen öbek sayısı: ${model.ptable.size}`; }
   json = serializePhrase(model);
-  info = `öğrenilen öbek sayısı: ${model.ptable.size}`;
 }
 // --gzip: sıkıştırılmış yaz (büyük modellerde ~5-10x küçük). Çıktı .gz olur.
 const gzip = has("--gzip");

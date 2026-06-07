@@ -75,6 +75,8 @@ Sıfırdan, bağımsız SMT motoru. Paralel metinden öğrenir, dış bağımlı
   (`model.weights`) ve translatePhrase varsayılan olarak kullanır (tarayıcı dahil).
 - model.json **gzip** ile sıkıştırılabilir (CLI `--gzip`; tarayıcıda
   CompressionStream). Yükleyiciler .gz / 0x1f8b sihirli baytını otomatik açar.
+- : kullanıcı sözlüğünü (kelime⇥karşılık) tek-kelimelik öbek
+  olarak modele katar (bilinmeyen kelime otoritesi); CLI , egit.html sözlük yükleme.
 - Model artık SAYIM (count) saklar; `derivePtable` ile φ türetilir; `mergeModels`
   birden çok modeli sayım düzeyinde birleştirir (parça parça eğitip toplama).
 - Tamamen Node ile test edilebilir (tarayıcı/CDN gerekmez). Yol haritası:
