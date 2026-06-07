@@ -99,15 +99,18 @@ const SEP = "";
 function trLower(s){ return s.replace(/İ/g,"i").replace(/I/g,"ı").toLocaleLowerCase("tr"); }
 function tokenize(text, lang){
   const lower = lang==="tr" ? trLower(text) : text.toLowerCase();
-  return lower.match(/[\p{L}\p{N}]+|[.,!?;:]/gu) || [];
+  const RE=/(?:https?:\/\/|www\.)\S+|[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}|\d+(?:[.,:/]\d+)*%?|[\p{L}\p{N}]+|[.,!?;:()\[\]"'’“”]/gu;
+  return lower.match(RE) || [];
 }
 function splitSentences(text){
   return text.replace(/\s+/g," ").split(/(?<=[.!?])\s+/).map(s=>s.trim()).filter(Boolean);
 }
+const NO_SPACE_BEFORE=new Set([".",",","!","?",";",":",")","]","}","%","'","’","”",'"']);
+const NO_SPACE_AFTER=new Set(["(","[","{","“"]);
 function detokenize(tokens){
-  let out="";
-  for(const tok of tokens){ if(/^[.,!?;:]$/.test(tok)) out+=tok; else out+=(out?" ":"")+tok; }
-  return out.replace(/(^\s*[a-zıçğöşü])|([.!?]\s+[a-zıçğöşü])/g, m=>m.toLocaleUpperCase("tr"));
+  let out="",noSpaceNext=false;
+  for(const tok of tokens){ if(out && !NO_SPACE_BEFORE.has(tok) && !noSpaceNext) out+=" "; out+=tok; noSpaceNext=NO_SPACE_AFTER.has(tok); }
+  return out.replace(/(^\s*\p{Ll})|([.!?]\s+\p{Ll})/gu, m=>m.toLocaleUpperCase("tr"));
 }
 function lmScore(lm, prev, w){
   const c=lm.bi.get(prev+SEP+w)||0, cp=lm.uni.get(prev)||0;
