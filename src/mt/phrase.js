@@ -159,9 +159,12 @@ export function buildPhraseModel(parallel, opts = {}) {
   const fa = (f) => (opts.stem ? stemTokens(f) : f);
   const alignPairs = pairs.map(({ e, f }) => ({ e, f: fa(f) }));
 
+  // İlerleme: ileri EM %45, geri EM %45, çıkarım+LM %10
+  const prog = opts.onProgress || null;
   // İki yönlü IBM-1
-  const t = trainIBM1(alignPairs, iterations);
-  const t2 = trainIBM1(alignPairs.map(({ e, f }) => ({ e: f, f: e })), iterations);
+  const t = trainIBM1(alignPairs, iterations, prog && ((i, n) => prog(0.45 * i / n, `hizalama (ileri) ${i}/${n}`)));
+  const t2 = trainIBM1(alignPairs.map(({ e, f }) => ({ e: f, f: e })), iterations, prog && ((i, n) => prog(0.45 + 0.45 * i / n, `hizalama (geri) ${i}/${n}`)));
+  if (prog) prog(0.9, "öbekler çıkarılıyor...");
 
   // Hizala + öbek çıkar
   const counts = new Map(), srcCounts = new Map();

@@ -158,13 +158,18 @@ self.onmessage = (e) => {
   const d = e.data;
   try {
     const parallel = d.srcText !== undefined ? self.MT.alignTexts(d.srcText, d.tgtText) : d.parallel;
-    const model = self.MT.buildPhraseModel(parallel, d.opts);
+    const opts = Object.assign({}, d.opts, { onProgress: (frac, label) => self.postMessage({ type:"progress", frac, label }) });
+    const model = self.MT.buildPhraseModel(parallel, opts);
     self.postMessage({ type:"done", json: self.MT.serializePhrase(model), pairs: parallel.length, phrases: model.ptable.size });
   } catch (err) { self.postMessage({ type:"error", message: String((err && err.message) || err) }); }
 };`;
     const worker = new Worker(URL.createObjectURL(new Blob([workerSrc], { type: "text/javascript" })));
     worker.onmessage = (e) => {
       const d = e.data;
+      if (d.type === "progress") {
+        trainFill.style.width = Math.round(d.frac * 100) + "%"; trainText.textContent = d.label;
+        return;
+      }
       trainBtn.disabled = false;
       if (d.type === "done") {
         trainFill.style.width = "100%"; trainText.textContent = `✓ Eğitim bitti · ${d.pairs} cümle · ${d.phrases} öbek`;
