@@ -41,7 +41,9 @@ Sıfırdan, bağımsız SMT motoru. Paralel metinden öğrenir, dış bağımlı
   `serialize`/`deserialize`, `buildModel`/`translate`.
 - `src/mt/phrase.js` (öbek-tabanlı, **varsayılan**): iki yönlü IBM-1 →
   grow-diag-final-and birleştirme → tutarlı öbek çıkarımı → φ(f̄|ē) skorlama →
-  öbek-tabanlı beam çözücü. Çözücüde **wordBonus** (kelime-üretim ödülü) dil
+  öbek-tabanlı beam çözücü + **lexical weighting** (öbeğin kelime düzeyi güveni
+  `lex(f̄|ē)`; sayımlar `[count, lex]` saklanır, aday skoru `logφ + lexWeight·log lex`).
+  Çözücüde **wordBonus** (kelime-üretim ödülü) dil
   modelinin negatif log skorlarını dengeler; yoksa boş çıktı seçilir.
   `decodePhraseReorder`: distorsiyon sınırlı, coverage (bit maskesi) tabanlı
   yeniden sıralama (SVO→SOV). `distortionWeight`/`distortionLimit` ile ayarlanır;

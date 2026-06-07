@@ -83,9 +83,12 @@ function symmetrize(a1, a2, n, m) {
   return A;
 }
 
-// ---- 3) Tutarlı öbek çiftlerini çıkar ----
-function extractPhrases(e, f, A, maxLen, counts, srcCounts) {
-  const n = e.length, m = f.length;
+// ---- 3) Tutarlı öbek çiftlerini çıkar (+ lexical ağırlık) ----
+// lex(f̄|ē): öbeğin iç kelime hizalamasından, kelime çeviri olasılıklarıyla
+// hesaplanan güven. Nadir/sahte öbekleri bastırır. fLex = t-tablosuyla aynı
+// jeton kümesi (stem açıksa köklenmiş hedef).
+function extractPhrases(e, f, A, maxLen, counts, srcCounts, fLex, t) {
+  const n = e.length;
   const pts = [...A].map((p) => p.split(",").map(Number));
   for (let i1 = 0; i1 < n; i1++) {
     for (let i2 = i1; i2 < Math.min(n, i1 + maxLen); i2++) {
@@ -99,12 +102,37 @@ function extractPhrases(e, f, A, maxLen, counts, srcCounts) {
       if (!ok) continue;
       const src = e.slice(i1, i2 + 1).join(" ");
       const tgt = f.slice(jmin, jmax + 1).join(" ");
+      const lex = lexWeight(e, fLex, i1, i2, jmin, jmax, pts, t);
       let mm = counts.get(src);
       if (!mm) counts.set(src, (mm = new Map()));
-      mm.set(tgt, (mm.get(tgt) || 0) + 1);
+      const prev = mm.get(tgt); // [count, maxLex]
+      if (prev) { prev[0] += 1; if (lex > prev[1]) prev[1] = lex; }
+      else mm.set(tgt, [1, lex]);
       srcCounts.set(src, (srcCounts.get(src) || 0) + 1);
     }
   }
+}
+
+const NULLW = " NULL"; // engine.js IBM-1 NULL jetonu ile aynı
+function lexWeight(e, fLex, i1, i2, jmin, jmax, pts, t) {
+  // her hedef j için, [i1,i2] içinde ona bağlı kaynak kelimeler
+  const byJ = new Map();
+  for (const [i, j] of pts) {
+    if (j >= jmin && j <= jmax && i >= i1 && i <= i2) {
+      let a = byJ.get(j); if (!a) byJ.set(j, (a = [])); a.push(i);
+    }
+  }
+  let prod = 1;
+  for (let j = jmin; j <= jmax; j++) {
+    const fw = fLex[j];
+    const is = byJ.get(j);
+    let s = 0, cnt = 0;
+    if (is && is.length) { for (const i of is) { s += t.get(e[i])?.get(fw) || 0; cnt++; } }
+    else { s = t.get(NULLW)?.get(fw) || 0; cnt = 1; } // hizalanmamış -> NULL
+    prod *= cnt > 0 ? s / cnt : 1e-9;
+    if (prod <= 0) return 1e-9;
+  }
+  return prod;
 }
 
 // ============================================================================
@@ -141,7 +169,7 @@ export function buildPhraseModel(parallel, opts = {}) {
     const a1 = alignEF(e, fs, t);
     const a2 = alignFE(e, fs, t2);
     const A = symmetrize(a1, a2, e.length, fs.length);
-    extractPhrases(e, f, A, maxLen, counts, srcCounts); // yüzey biçim
+    extractPhrases(e, f, A, maxLen, counts, srcCounts, fs, t); // yüzey öbek, lex için fs/t
   }
 
   // Ham sayımları sakla (model birleştirme sayım düzeyinde yapılır);
@@ -154,15 +182,22 @@ export function buildPhraseModel(parallel, opts = {}) {
   };
 }
 
-// φ(tgt|src) = count(src,tgt)/count(src); minCount altını ele, en iyi maxCand'i tut
+// Sayım değerinden [count, lex] oku (eski biçimde değer salt sayıdır)
+const cOf = (v) => (Array.isArray(v) ? v[0] : v);
+const lexOf = (v) => (Array.isArray(v) ? v[1] : 1);
+
+// Her aday için [φ, lex] üret. φ=count/total; lex=lexical güven (varsa).
 export function derivePtable(pcounts, scounts, { minCount = 1, maxCand = 20 } = {}) {
   const ptable = new Map();
   for (const [src, mm] of pcounts) {
     const tot = scounts.get(src);
     const scored = [];
-    for (const [tgt, c] of mm) if (c >= minCount) scored.push([tgt, c / tot]);
+    for (const [tgt, v] of mm) {
+      const c = cOf(v);
+      if (c >= minCount) scored.push([tgt, [c / tot, lexOf(v)]]);
+    }
     if (!scored.length) continue;
-    scored.sort((a, b) => b[1] - a[1]);
+    scored.sort((a, b) => b[1][0] - a[1][0]); // φ'ye göre
     ptable.set(src, new Map(scored.slice(0, maxCand)));
   }
   return ptable;
@@ -179,7 +214,12 @@ export function mergeModels(models) {
   for (const m of models) {
     for (const [src, mm] of m.pcounts) {
       let d = pc.get(src); if (!d) pc.set(src, (d = new Map()));
-      addInto(d, mm);
+      for (const [tgt, v] of mm) {
+        const c = cOf(v), lex = lexOf(v);
+        const prev = d.get(tgt);
+        if (prev) { prev[0] += c; if (lex > prev[1]) prev[1] = lex; }
+        else d.set(tgt, [c, lex]); // [count, maxLex]
+      }
     }
     addInto(sc, m.scounts);
     addInto(uni, m.lm.uni); addInto(bi, m.lm.bi);
@@ -199,7 +239,7 @@ export function decodePhrase(eTokens, model, opts = {}) {
   const { ptable, lm, maxPhrase } = model;
   // wordBonus: uretilen her hedef kelime icin odul. Dil modelinin negatif
   // log-olasiliklarini dengeler; olmazsa cozucu "hicbir sey uretmeme"yi secer.
-  const { beam = 30, lmWeight = 0.7, topK = 8, wordBonus = 2.5 } = opts;
+  const { beam = 30, lmWeight = 0.7, topK = 8, wordBonus = 2.5, lexWeight = 0.5 } = opts;
   const n = eTokens.length;
   const beams = Array.from({ length: n + 1 }, () => []);
   beams[0] = [{ seq: [], h2: "<s>", h1: "<s>", score: 0 }];
@@ -214,17 +254,18 @@ export function decodePhrase(eTokens, model, opts = {}) {
       const cands = ptable.get(srcPhrase);
       let options;
       if (cands && cands.size) {
-        options = [...cands.entries()].sort((a, b) => b[1] - a[1]).slice(0, topK);
+        options = [...cands.entries()].sort((a, b) => cOf(b[1]) - cOf(a[1])).slice(0, topK);
       } else if (len === 1) {
         // bilinmeyen tek kelime: oldugu gibi gecir (tercih) ya da düşür
-        options = [[eTokens[i], 0.1], ["", 1e-3]];
+        options = [[eTokens[i], [0.1, 1]], ["", [1e-3, 1]]];
       } else {
         continue;
       }
       for (const h of beams[i]) {
-        for (const [tgtPhrase, p] of options) {
+        for (const [tgtPhrase, pv] of options) {
           const words = tgtPhrase === "" ? [] : tgtPhrase.split(" ");
-          let h2 = h.h2, h1 = h.h1, sc = h.score + Math.log(p);
+          let h2 = h.h2, h1 = h.h1;
+          let sc = h.score + Math.log(cOf(pv)) + lexWeight * Math.log(lexOf(pv));
           for (const w of words) { sc += lmWeight * lmScore3(lm, h2, h1, w) + wordBonus; h2 = h1; h1 = w; }
           beams[i + len].push({ seq: h.seq.concat(words), h2, h1, score: sc });
         }
@@ -243,7 +284,7 @@ export function decodePhrase(eTokens, model, opts = {}) {
 export function decodePhraseReorder(eTokens, model, opts = {}) {
   const { ptable, lm, maxPhrase } = model;
   const {
-    beam = 50, lmWeight = 0.7, topK = 8, wordBonus = 2.5,
+    beam = 50, lmWeight = 0.7, topK = 8, wordBonus = 2.5, lexWeight = 0.5,
     distortionLimit = 5, distortionWeight = 0.25,
   } = opts;
   const n = eTokens.length;
@@ -253,9 +294,9 @@ export function decodePhraseReorder(eTokens, model, opts = {}) {
   const optionsFor = (srcPhrase, i, len) => {
     const cands = ptable.get(srcPhrase);
     if (cands && cands.size) {
-      return [...cands.entries()].sort((a, b) => b[1] - a[1]).slice(0, topK);
+      return [...cands.entries()].sort((a, b) => cOf(b[1]) - cOf(a[1])).slice(0, topK);
     }
-    if (len === 1) return [[eTokens[i], 0.1], ["", 1e-3]];
+    if (len === 1) return [[eTokens[i], [0.1, 1]], ["", [1e-3, 1]]];
     return null;
   };
 
@@ -275,10 +316,10 @@ export function decodePhraseReorder(eTokens, model, opts = {}) {
           if (Math.abs(i - h.lastEnd) > distortionLimit) continue;
           const options = optionsFor(eTokens.slice(i, i + len).join(" "), i, len);
           if (!options) continue;
-          for (const [tgtPhrase, p] of options) {
+          for (const [tgtPhrase, pv] of options) {
             const words = tgtPhrase === "" ? [] : tgtPhrase.split(" ");
             let h2 = h.h2, h1 = h.h1;
-            let sc = h.score + Math.log(p) - distortionWeight * Math.abs(i - h.lastEnd);
+            let sc = h.score + Math.log(cOf(pv)) + lexWeight * Math.log(lexOf(pv)) - distortionWeight * Math.abs(i - h.lastEnd);
             for (const w of words) { sc += lmWeight * lmScore3(lm, h2, h1, w) + wordBonus; h2 = h1; h1 = w; }
             stacks[k + len].push({ cov: h.cov | mask, lastEnd: i + len, h2, h1, seq: h.seq.concat(words), score: sc });
           }

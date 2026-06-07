@@ -123,9 +123,12 @@ function lmScore3(lm, h2, h1, w){
   p+=0.1*(((lm.uni.get(w)||0)+1)/((lm.N||lm.V)+lm.V));
   return Math.log(p>0?p:1e-10);
 }
+// aday değeri [φ, lex] (eski biçimde düz sayı olabilir)
+const cOf=(v)=>Array.isArray(v)?v[0]:v;
+const lexOf=(v)=>Array.isArray(v)?v[1]:1;
 function decodePhrase(eTokens, model, opts={}){
   const {ptable, lm, maxPhrase}=model;
-  const {beam=30, lmWeight=0.7, topK=8, wordBonus=2.5}=opts;
+  const {beam=30, lmWeight=0.7, topK=8, wordBonus=2.5, lexWeight=0.5}=opts;
   const n=eTokens.length;
   const beams=Array.from({length:n+1},()=>[]);
   beams[0]=[{seq:[],h2:"<s>",h1:"<s>",score:0}];
@@ -136,13 +139,13 @@ function decodePhrase(eTokens, model, opts={}){
       const sp=eTokens.slice(i,i+len).join(" ");
       const cands=ptable.get(sp);
       let options;
-      if(cands && cands.size) options=[...cands.entries()].sort((a,b)=>b[1]-a[1]).slice(0,topK);
-      else if(len===1) options=[[eTokens[i],0.1],["",1e-3]];
+      if(cands && cands.size) options=[...cands.entries()].sort((a,b)=>cOf(b[1])-cOf(a[1])).slice(0,topK);
+      else if(len===1) options=[[eTokens[i],[0.1,1]],["",[1e-3,1]]];
       else continue;
       for(const h of beams[i]){
-        for(const [tp,p] of options){
+        for(const [tp,pv] of options){
           const words=tp===""?[]:tp.split(" ");
-          let h2=h.h2,h1=h.h1,sc=h.score+Math.log(p);
+          let h2=h.h2,h1=h.h1,sc=h.score+Math.log(cOf(pv))+lexWeight*Math.log(lexOf(pv));
           for(const w of words){ sc+=lmWeight*lmScore3(lm,h2,h1,w)+wordBonus; h2=h1; h1=w; }
           beams[i+len].push({seq:h.seq.concat(words),h2,h1,score:sc});
         }
@@ -154,14 +157,14 @@ function decodePhrase(eTokens, model, opts={}){
 }
 function decodePhraseReorder(eTokens, model, opts={}){
   const {ptable, lm, maxPhrase}=model;
-  const {beam=50, lmWeight=0.7, topK=8, wordBonus=2.5, distortionLimit=5, distortionWeight=0.25}=opts;
+  const {beam=50, lmWeight=0.7, topK=8, wordBonus=2.5, lexWeight=0.5, distortionLimit=5, distortionWeight=0.25}=opts;
   const n=eTokens.length;
   if(n>30 || n===0) return decodePhrase(eTokens, model, opts);
   const full=(1<<n)-1;
   const optionsFor=(sp,i,len)=>{
     const c=ptable.get(sp);
-    if(c && c.size) return [...c.entries()].sort((a,b)=>b[1]-a[1]).slice(0,topK);
-    if(len===1) return [[eTokens[i],0.1],["",1e-3]];
+    if(c && c.size) return [...c.entries()].sort((a,b)=>cOf(b[1])-cOf(a[1])).slice(0,topK);
+    if(len===1) return [[eTokens[i],[0.1,1]],["",[1e-3,1]]];
     return null;
   };
   const stacks=Array.from({length:n+1},()=>[]);
@@ -177,9 +180,9 @@ function decodePhraseReorder(eTokens, model, opts={}){
           if(Math.abs(i-h.lastEnd)>distortionLimit) continue;
           const options=optionsFor(eTokens.slice(i,i+len).join(" "),i,len);
           if(!options) continue;
-          for(const [tp,p] of options){
+          for(const [tp,pv] of options){
             const words=tp===""?[]:tp.split(" ");
-            let h2=h.h2,h1=h.h1,sc=h.score+Math.log(p)-distortionWeight*Math.abs(i-h.lastEnd);
+            let h2=h.h2,h1=h.h1,sc=h.score+Math.log(cOf(pv))+lexWeight*Math.log(lexOf(pv))-distortionWeight*Math.abs(i-h.lastEnd);
             for(const w of words){ sc+=lmWeight*lmScore3(lm,h2,h1,w)+wordBonus; h2=h1; h1=w; }
             stacks[k+len].push({cov:h.cov|mask,lastEnd:i+len,h2,h1,seq:h.seq.concat(words),score:sc});
           }
@@ -205,9 +208,9 @@ function derivePtable(pcounts, scounts, minCount, maxCand){
   const ptable=new Map();
   for(const [src,mm] of pcounts){
     const tot=scounts.get(src); const scored=[];
-    for(const [tgt,c] of mm) if(c>=minCount) scored.push([tgt,c/tot]);
+    for(const [tgt,v] of mm){ const c=cOf(v); if(c>=minCount) scored.push([tgt,[c/tot,lexOf(v)]]); }
     if(!scored.length) continue;
-    scored.sort((a,b)=>b[1]-a[1]);
+    scored.sort((a,b)=>b[1][0]-a[1][0]);
     ptable.set(src,new Map(scored.slice(0,maxCand)));
   }
   return ptable;
