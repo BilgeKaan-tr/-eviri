@@ -326,8 +326,8 @@ async function handleFile(file){
       progressFill.style.width = Math.round(i / pages.length * 100) + "%";
       progressText.textContent = `${i + 1}/${pages.length} sayfa çevriliyor...`;
       await sleep(0);
-      const paras = pages[i].text.split(/\n{2,}/).map(p => p.replace(/\n/g, " ").trim()).filter(Boolean);
-      outPages.push({ width: pages[i].width, height: pages[i].height, text: paras.map(p => MT.translatePhrase(model, p)).join("\n\n") });
+      const blocks = pages[i].blocks.map(b => ({ text: MT.translatePhrase(model, b.text), heading: b.heading, scale: b.scale }));
+      outPages.push({ width: pages[i].width, height: pages[i].height, blocks });
     }
     progressText.textContent = "PDF oluşturuluyor...";
     const out = await buildPdf(outPages);
@@ -344,49 +344,60 @@ async function extractPdf(data){
   for (let i = 1; i <= doc.numPages; i++) {
     const page = await doc.getPage(i); const vp = page.getViewport({ scale: 1 });
     const content = await page.getTextContent();
-    pages.push({ width: vp.width, height: vp.height, text: itemsToText(content.items) });
+    pages.push({ width: vp.width, height: vp.height, blocks: itemsToBlocks(content.items) });
   }
   await doc.destroy(); return pages;
 }
-function itemsToText(items){
-  let out = "", lastY = null;
+const median = (a) => { if (!a || !a.length) return 0; const s = [...a].sort((x, y) => x - y); return s[Math.floor(s.length / 2)]; };
+// Metni paragraf bloklarına ayırır + her bloğa font boyutu/ölçek ve başlık bayrağı atar
+function itemsToBlocks(items){
+  const blocks = []; let cur = null, lastY = null;
   for (const it of items){
     if (typeof it.str !== "string") continue;
     const y = it.transform ? it.transform[5] : null;
-    if (lastY !== null && y !== null){ const dy = Math.abs(lastY - y);
-      if (dy > 14) out += "\n\n"; else if (dy > 2) out += "\n";
-      else if (out && !out.endsWith(" ") && !out.endsWith("\n")) out += " "; }
-    out += it.str; if (it.hasEOL) out += "\n"; if (y !== null) lastY = y;
+    const sz = it.transform ? Math.abs(it.transform[3]) : 0;
+    const brk = lastY !== null && y !== null && Math.abs(lastY - y) > 14;
+    if (!cur || brk){ if (cur && cur.text.trim()) blocks.push(cur); cur = { text: "", sizes: [] }; }
+    if (cur.text && !cur.text.endsWith(" ")) cur.text += " ";
+    cur.text += it.str; if (sz > 0) cur.sizes.push(sz); if (y !== null) lastY = y;
   }
-  return out.replace(/[ \t]+/g, " ").replace(/ *\n */g, "\n").replace(/\n{3,}/g, "\n\n").trim();
+  if (cur && cur.text.trim()) blocks.push(cur);
+  for (const b of blocks){ b.text = b.text.replace(/\s+/g, " ").trim(); b.size = median(b.sizes) || 12; delete b.sizes; }
+  const body = median(blocks.map((b) => b.size)) || 12;
+  for (const b of blocks){ b.scale = b.size / body; b.heading = b.size >= body * 1.2 && b.text.length < 120; }
+  return blocks;
 }
-const MARGIN=50, FONT_SIZE=11, LINE_HEIGHT=16;
+const MARGIN = 50, BODY_SIZE = 11;
+// Blokları boyut-duyarlı diz: başlıklar daha büyük + öncesinde boşluk; paragraf aralığı korunur
 async function buildPdf(pages){
   const pdf = await PDFDocument.create(); pdf.registerFontkit(fontkit);
   const font = await pdf.embedFont(Uint8Array.from(atob(window.FONT_B64), c => c.charCodeAt(0)), { subset: true });
   for (const page of pages){
     const w = page.width || 595, h = page.height || 842;
     let cur = pdf.addPage([w, h]); let y = h - MARGIN; const maxW = w - MARGIN * 2;
-    for (const line of layoutText(page.text, font, FONT_SIZE, maxW)){
-      if (y < MARGIN){ cur = pdf.addPage([w, h]); y = h - MARGIN; }
-      if (line.length > 0) cur.drawText(line, { x: MARGIN, y, size: FONT_SIZE, font, color: rgb(0,0,0) });
-      y -= LINE_HEIGHT;
+    for (const block of (page.blocks || [])){
+      const size = Math.max(9, Math.min(24, Math.round(BODY_SIZE * (block.scale || 1))));
+      const lh = Math.round(size * 1.45);
+      if (block.heading) y -= lh * 0.5;
+      for (const line of wrapPara(block.text, font, size, maxW)){
+        if (y < MARGIN){ cur = pdf.addPage([w, h]); y = h - MARGIN; }
+        if (line) cur.drawText(line, { x: MARGIN, y, size, font, color: rgb(0,0,0) });
+        y -= lh;
+      }
+      y -= lh * 0.5;
     }
   }
   return pdf.save();
 }
-function layoutText(text, font, size, maxW){
-  const out = [];
-  for (const para of (text || "").split("\n")){
-    if (para.trim() === ""){ out.push(""); continue; }
-    let line = "";
-    for (const word of para.split(/\s+/)){
-      const cand = line ? line + " " + word : word;
-      if (font.widthOfTextAtSize(cand, size) > maxW && line){ out.push(line); line = breakLongWord(word, font, size, maxW, out); }
-      else line = cand;
-    }
-    if (line) out.push(line);
+function wrapPara(text, font, size, maxW){
+  const out = []; let line = "";
+  for (const word of (text || "").split(/\s+/)){
+    if (!word) continue;
+    const cand = line ? line + " " + word : word;
+    if (font.widthOfTextAtSize(cand, size) > maxW && line){ out.push(line); line = breakLongWord(word, font, size, maxW, out); }
+    else line = cand;
   }
+  if (line) out.push(line);
   return out;
 }
 function breakLongWord(word, font, size, maxW, out){
