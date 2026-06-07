@@ -1,19 +1,15 @@
-// PDF'ten metni sayfa sayfa cikarir. Her sayfa icin satirlara ayrilmis
-// duz metin ve orijinal sayfa boyutlarini dondurur.
+// PDF'ten metni sayfa sayfa cikarir. Her sayfa, font boyutuna gore baslik/govde
+// ayrimi yapilan paragraf BLOKLARINA ayrilir (duzen korumali cikti icin).
 import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
 
 /**
  * @param {Buffer} buffer - PDF dosyasinin icerigi
- * @returns {Promise<{pages: {width:number,height:number,text:string}[]}>}
+ * @param {{maxPages?:number}} [opts]
+ * @returns {Promise<{pages: {width:number,height:number,blocks:{text:string,scale:number,heading:boolean}[]}[]}>}
  */
 export async function extractPdf(buffer, opts = {}) {
   const data = new Uint8Array(buffer);
-  const doc = await getDocument({
-    data,
-    useSystemFonts: true,
-    // Konsolu uyarilarla doldurmasin
-    verbosity: 0,
-  }).promise;
+  const doc = await getDocument({ data, useSystemFonts: true, verbosity: 0 }).promise;
 
   if (opts.maxPages && doc.numPages > opts.maxPages) {
     await doc.destroy();
@@ -25,52 +21,37 @@ export async function extractPdf(buffer, opts = {}) {
     const page = await doc.getPage(i);
     const viewport = page.getViewport({ scale: 1 });
     const content = await page.getTextContent();
-    const text = itemsToText(content.items);
-    pages.push({
-      width: viewport.width,
-      height: viewport.height,
-      text,
-    });
+    pages.push({ width: viewport.width, height: viewport.height, blocks: itemsToBlocks(content.items) });
     page.cleanup();
   }
   await doc.destroy();
   return { pages };
 }
 
-// pdf.js metin parcalarini, satir sonlarini ve paragraf bosluklarini
-// koruyarak okunabilir duz metne cevirir.
-function itemsToText(items) {
-  let out = "";
-  let lastY = null;
-  for (const item of items) {
-    if (typeof item.str !== "string") continue;
-    const y = item.transform ? item.transform[5] : null;
+const median = (a) => { if (!a.length) return 0; const s = [...a].sort((x, y) => x - y); return s[Math.floor(s.length / 2)]; };
 
-    if (lastY !== null && y !== null) {
-      const dy = Math.abs(lastY - y);
-      if (dy > 14) {
-        // Buyuk dikey atlama -> paragraf
-        out += "\n\n";
-      } else if (dy > 2) {
-        // Yeni satir
-        out += "\n";
-      } else if (out && !out.endsWith(" ") && !out.endsWith("\n")) {
-        out += " ";
-      }
-    }
-
-    out += item.str;
-    if (item.hasEOL) out += "\n";
+// pdf.js metin parcalarini paragraf bloklarina ayirir; her bloga temsili font
+// boyutu/olcek ve baslik bayragi atar. Tire ile bolunen kelimeler birlestirilir.
+function itemsToBlocks(items) {
+  const blocks = [];
+  let cur = null, lastY = null;
+  for (const it of items) {
+    if (typeof it.str !== "string") continue;
+    const y = it.transform ? it.transform[5] : null;
+    const sz = it.transform ? Math.abs(it.transform[3]) : 0;
+    const brk = lastY !== null && y !== null && Math.abs(lastY - y) > 14;
+    if (!cur || brk) { if (cur && cur.text.trim()) blocks.push(cur); cur = { text: "", sizes: [] }; }
+    if (cur.text && !cur.text.endsWith(" ")) cur.text += " ";
+    cur.text += it.str;
+    if (sz > 0) cur.sizes.push(sz);
     if (y !== null) lastY = y;
   }
-  return collapse(out);
-}
-
-function collapse(text) {
-  return text
-    .replace(/(\p{L})-\s*\n\s*(\p{L})/gu, "$1$2")
-    .replace(/[ \t]+/g, " ")
-    .replace(/ *\n */g, "\n")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
+  if (cur && cur.text.trim()) blocks.push(cur);
+  for (const b of blocks) {
+    b.text = b.text.replace(/(\p{L})-\s+(\p{L})/gu, "$1$2").replace(/\s+/g, " ").trim();
+    b.size = median(b.sizes) || 12; delete b.sizes;
+  }
+  const body = median(blocks.map((b) => b.size)) || 12;
+  for (const b of blocks) { b.scale = b.size / body; b.heading = b.size >= body * 1.2 && b.text.length < 120; delete b.size; }
+  return blocks.filter((b) => b.text);
 }

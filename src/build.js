@@ -1,6 +1,6 @@
-// Cevrilmis sayfa metinlerinden, Turkce karakter destekli (DejaVu Sans)
-// font gomulu yeni bir PDF olusturur. Orijinal sayfa boyutlari korunur;
-// metin kenar bosluklari icinde sarmalanir, tasarsa devam sayfasi acilir.
+// Cevrilmis sayfalardan, Turkce karakter destekli (DejaVu Sans) font gomulu
+// yeni bir PDF olusturur. Bloklar boyut-duyarli dizilir: basliklar BOLD ve
+// daha buyuk; paragraf araliklari korunur. Orijinal sayfa boyutu korunur.
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -11,96 +11,76 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const FONT_DIR = path.join(__dirname, "..", "assets", "fonts");
 
 const MARGIN = 50;
-const FONT_SIZE = 11;
-const LINE_HEIGHT = 16;
+const BODY_SIZE = 11;
 
-// Font baytlarını bir kez oku (her PDF'te disk I/O yapma)
-let _fontBytes = null;
-function fontBytes() {
-  if (!_fontBytes) _fontBytes = fs.readFileSync(path.join(FONT_DIR, "DejaVuSans.ttf"));
-  return _fontBytes;
-}
+// Font baytlarini bir kez oku (her PDF'te disk I/O yapma)
+let _reg = null, _bold = null;
+const regularBytes = () => (_reg ||= fs.readFileSync(path.join(FONT_DIR, "DejaVuSans.ttf")));
+const boldBytes = () => {
+  if (_bold === null) {
+    const p = path.join(FONT_DIR, "DejaVuSans-Bold.ttf");
+    _bold = fs.existsSync(p) ? fs.readFileSync(p) : false;
+  }
+  return _bold;
+};
 
 /**
- * @param {{width:number,height:number,text:string}[]} pages
+ * @param {{width:number,height:number,blocks?:{text:string,scale:number,heading:boolean}[],text?:string}[]} pages
  * @returns {Promise<Uint8Array>}
  */
 export async function buildPdf(pages) {
   const pdf = await PDFDocument.create();
   pdf.registerFontkit(fontkit);
-
-  const regular = await pdf.embedFont(fontBytes(), { subset: true });
+  const regular = await pdf.embedFont(regularBytes(), { subset: true });
+  const bb = boldBytes();
+  const bold = bb ? await pdf.embedFont(bb, { subset: true }) : regular;
 
   for (const page of pages) {
-    const width = page.width || 595; // A4 fallback
-    const height = page.height || 842;
+    const width = page.width || 595, height = page.height || 842;
     let current = pdf.addPage([width, height]);
     let y = height - MARGIN;
-
     const maxWidth = width - MARGIN * 2;
-    const lines = layoutText(page.text, regular, FONT_SIZE, maxWidth);
+    // Geriye dönük uyumluluk: blok yoksa düz metni tek blok say
+    const blocks = page.blocks || [{ text: page.text || "", scale: 1, heading: false }];
 
-    for (const line of lines) {
-      if (y < MARGIN) {
-        current = pdf.addPage([width, height]);
-        y = height - MARGIN;
+    for (const block of blocks) {
+      const size = Math.max(9, Math.min(24, Math.round(BODY_SIZE * (block.scale || 1))));
+      const lh = Math.round(size * 1.45);
+      const font = block.heading ? bold : regular;
+      if (block.heading) y -= lh * 0.5; // başlık öncesi boşluk
+      for (const line of wrapPara(block.text, font, size, maxWidth)) {
+        if (y < MARGIN) { current = pdf.addPage([width, height]); y = height - MARGIN; }
+        if (line) current.drawText(line, { x: MARGIN, y, size, font, color: rgb(0, 0, 0) });
+        y -= lh;
       }
-      if (line.length > 0) {
-        current.drawText(line, {
-          x: MARGIN,
-          y,
-          size: FONT_SIZE,
-          font: regular,
-          color: rgb(0, 0, 0),
-        });
-      }
-      y -= LINE_HEIGHT;
+      y -= lh * 0.5; // paragraf sonrası boşluk
     }
   }
-
   return pdf.save();
 }
 
-// Metni, fontun gercek genisliklerine gore satirlara sarmalar.
-// Paragraf bosluklarini bos satirla korur.
-function layoutText(text, font, size, maxWidth) {
+// Bir paragrafi fontun gercek genisliklerine gore satirlara sarmalar.
+function wrapPara(text, font, size, maxWidth) {
   const out = [];
-  const paragraphs = (text || "").split("\n");
-
-  for (const para of paragraphs) {
-    if (para.trim() === "") {
-      out.push("");
-      continue;
-    }
-    const words = para.split(/\s+/);
-    let line = "";
-    for (const word of words) {
-      const candidate = line ? line + " " + word : word;
-      if (font.widthOfTextAtSize(candidate, size) > maxWidth && line) {
-        out.push(line);
-        line = word;
-        // Tek kelime bile satira sigmiyorsa zorla bol.
-        line = breakLongWord(line, font, size, maxWidth, out);
-      } else {
-        line = candidate;
-      }
-    }
-    if (line) out.push(line);
+  let line = "";
+  for (const word of (text || "").split(/\s+/)) {
+    if (!word) continue;
+    const candidate = line ? line + " " + word : word;
+    if (font.widthOfTextAtSize(candidate, size) > maxWidth && line) {
+      out.push(line);
+      line = breakLongWord(word, font, size, maxWidth, out);
+    } else line = candidate;
   }
+  if (line) out.push(line);
   return out;
 }
 
-// Tek bir kelime maxWidth'i asiyorsa karakter bazinda boler.
 function breakLongWord(word, font, size, maxWidth, out) {
   if (font.widthOfTextAtSize(word, size) <= maxWidth) return word;
   let buf = "";
   for (const ch of word) {
-    if (font.widthOfTextAtSize(buf + ch, size) > maxWidth && buf) {
-      out.push(buf);
-      buf = ch;
-    } else {
-      buf += ch;
-    }
+    if (font.widthOfTextAtSize(buf + ch, size) > maxWidth && buf) { out.push(buf); buf = ch; }
+    else buf += ch;
   }
   return buf;
 }
