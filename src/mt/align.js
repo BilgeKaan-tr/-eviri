@@ -4,7 +4,7 @@
 //  Dilden bağımsızdır: "uzun cümle uzun cümleye denk gelir" sezgisine dayanır.
 //  Dinamik programlama ile 1-1, 1-0, 0-1, 2-1, 1-2, 2-2 eşleşmelerini bulur.
 // ============================================================================
-import { splitSentences } from "./engine.js";
+import { splitSentences, tokenize, trainIBM1 } from "./engine.js";
 
 const C = 1.0;    // E(hedef/kaynak uzunluk oranı) — benzer diller için ~1
 const S2 = 6.8;   // varyans (Gale-Church standart sabiti)
@@ -46,30 +46,22 @@ const PRIOR = {
  * @param {string[]} tgtSents hedef (Türkçe) cümleler
  * @returns {{si:number,sj:number,ti:number,tj:number}[]} hizalama blokları (indeks aralıkları)
  */
-function alignByLength(srcSents, tgtSents) {
-  const n = srcSents.length, m = tgtSents.length;
-  const sl = srcSents.map((s) => s.length);
-  const tl = tgtSents.map((s) => s.length);
-  const sum = (arr, a, b) => { let s = 0; for (let k = a; k < b; k++) s += arr[k]; return s; };
-
-  // D[i][j] = ilk i kaynak + ilk j hedef cümleyi hizalama maliyeti
+// Genel DP: blockCost(i,ni,j,nj,type) ile herhangi bir maliyet fonksiyonunu hizalar
+function alignDP(n, m, blockCost) {
   const D = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(Infinity));
   const back = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(null));
   D[0][0] = 0;
-
+  const moves = [
+    [1, 1, "1-1"], [1, 0, "1-0"], [0, 1, "0-1"],
+    [2, 1, "2-1"], [1, 2, "1-2"], [2, 2, "2-2"],
+  ];
   for (let i = 0; i <= n; i++) {
     for (let j = 0; j <= m; j++) {
       if (D[i][j] === Infinity) continue;
-      const moves = [
-        [1, 1, "1-1"], [1, 0, "1-0"], [0, 1, "0-1"],
-        [2, 1, "2-1"], [1, 2, "1-2"], [2, 2, "2-2"],
-      ];
       for (const [di, dj, type] of moves) {
         const ni = i + di, nj = j + dj;
         if (ni > n || nj > m) continue;
-        const l1 = sum(sl, i, ni);
-        const l2 = sum(tl, j, nj);
-        const cost = D[i][j] + lengthCost(l1, l2) + PRIOR[type];
+        const cost = D[i][j] + blockCost(i, ni, j, nj, type);
         if (cost < D[ni][nj]) { D[ni][nj] = cost; back[ni][nj] = [i, j, type]; }
       }
     }
@@ -87,6 +79,60 @@ function alignByLength(srcSents, tgtSents) {
   }
   blocks.reverse();
   return blocks;
+}
+
+// Uzunluk-tabanlı (Gale-Church) hizalama: blok maliyeti = uzunluk + tür önseli
+function alignByLength(srcSents, tgtSents) {
+  const sl = srcSents.map((s) => s.length), tl = tgtSents.map((s) => s.length);
+  const sum = (a, x, y) => { let s = 0; for (let k = x; k < y; k++) s += a[k]; return s; };
+  return alignDP(srcSents.length, tgtSents.length,
+    (i, ni, j, nj, type) => lengthCost(sum(sl, i, ni), sum(tl, j, nj)) + PRIOR[type]);
+}
+
+/**
+ * İki geçişli (lexical-destekli) hizalama: önce uzunlukla kabaca hizala,
+ * IBM-1 öğren, sonra UZUNLUK + KELİME ÖRTÜŞMESİ ile yeniden hizala. Gürültülü
+ * kitap çiftlerinde (eksik/fazla cümle, serbest çeviri) Gale-Church'ten daha sağlam.
+ * @returns {{src:string,tgt:string}[]}
+ */
+export function alignTextsRefine(srcText, tgtText, opts = {}) {
+  const srcSents = splitSentences(srcText), tgtSents = splitSentences(tgtText);
+  const n = srcSents.length, m = tgtSents.length;
+  if (!n || !m) return [];
+  const sl = srcSents.map((s) => s.length), tl = tgtSents.map((s) => s.length);
+  const sum = (a, x, y) => { let s = 0; for (let k = x; k < y; k++) s += a[k]; return s; };
+  const lenCost = (i, ni, j, nj, type) => lengthCost(sum(sl, i, ni), sum(tl, j, nj)) + PRIOR[type];
+
+  // 1. geçiş: uzunluk
+  const b1 = alignDP(n, m, lenCost);
+  // IBM-1 öğren (1. geçiş çiftlerinden)
+  const pairs = [];
+  for (const b of b1) {
+    if (b.sj > b.si && b.tj > b.ti) {
+      pairs.push({ e: tokenize(srcSents.slice(b.si, b.sj).join(" "), "en"), f: tokenize(tgtSents.slice(b.ti, b.tj).join(" "), "tr") });
+    }
+  }
+  const t = trainIBM1(pairs, opts.iterations || 5);
+
+  // 2. geçiş: uzunluk + lexical
+  const srcTok = srcSents.map((s) => tokenize(s, "en")), tgtTok = tgtSents.map((s) => tokenize(s, "tr"));
+  const lambda = opts.lambda != null ? opts.lambda : 1.0;
+  const lexCost = (i, ni, j, nj) => {
+    const f = []; for (let k = j; k < nj; k++) f.push(...tgtTok[k]);
+    if (!f.length) return 0;
+    const e = []; for (let k = i; k < ni; k++) e.push(...srcTok[k]);
+    let s = 0;
+    for (const fw of f) { let best = 1e-4; for (const ew of e) { const p = t.get(ew)?.get(fw) || 0; if (p > best) best = p; } s += -Math.log(best); }
+    return s / f.length;
+  };
+  const b2 = alignDP(n, m, (i, ni, j, nj, type) => lenCost(i, ni, j, nj, type) + lambda * lexCost(i, ni, j, nj));
+
+  const out = [];
+  for (const { si, sj, ti, tj } of b2) {
+    if (sj - si === 0 || tj - ti === 0) continue;
+    out.push({ src: srcSents.slice(si, sj).join(" "), tgt: tgtSents.slice(ti, tj).join(" ") });
+  }
+  return out;
 }
 
 /**

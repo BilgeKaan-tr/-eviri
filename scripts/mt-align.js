@@ -5,7 +5,7 @@
 //   node scripts/mt-align.js --src kitap-en.txt --tgt kitap-tr.txt --out cift.tsv
 //   node scripts/mt-train.js --tsv cift.tsv --out model.json
 import fs from "node:fs";
-import { alignTexts } from "../src/mt/align.js";
+import { alignTexts, alignTextsRefine } from "../src/mt/align.js";
 
 function arg(name, def) {
   const i = process.argv.indexOf(name);
@@ -22,7 +22,7 @@ if (!srcFile || !tgtFile) {
 const srcText = fs.readFileSync(srcFile, "utf8");
 const tgtText = fs.readFileSync(tgtFile, "utf8");
 
-const pairs = alignTexts(srcText, tgtText);
+const pairs = process.argv.includes("--refine") ? alignTextsRefine(srcText, tgtText) : alignTexts(srcText, tgtText);
 const tsv = pairs.map((p) => p.src.replace(/\t/g, " ") + "\t" + p.tgt.replace(/\t/g, " ")).join("\n");
 fs.writeFileSync(out, tsv + "\n");
 console.log(`✓ ${pairs.length} cümle çifti hizalandı -> ${out}`);

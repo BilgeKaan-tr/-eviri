@@ -25,7 +25,7 @@ verirsiniz; motor kelime/öbek karşılıklarını öğrenir ve yeni cümleleri 
 
 ```bash
 # 0) (İsteğe bağlı) İki ham kitabı otomatik hizala -> TSV
-node scripts/mt-align.js --src kitap-en.txt --tgt kitap-tr.txt --out cift.tsv
+node scripts/mt-align.js --src kitap-en.txt --tgt kitap-tr.txt --out cift.tsv --refine
 
 # 1) Eğit  (öbek-tabanlı varsayılan)
 node scripts/mt-train.js --tsv data/ornek-paralel.tsv --out model.json --iter 20

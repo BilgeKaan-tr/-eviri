@@ -57,7 +57,10 @@ Sıfırdan, bağımsız SMT motoru. Paralel metinden öğrenir, dış bağımlı
   (`enLemmas`/`lemmaOptions`: İngilizce çekim eki soyup kökü tabloda arar, φ'ye küçük ceza).
    (ortak önek paylaşımı + erken-durmalı
   arama). Çözücüler `model._trie`'yi tembel kurar; `phraseOptionsAt` ile aday alır.
-- `src/mt/align.js`: Gale-Church otomatik cümle hizalama (ham metin → çiftler).
+- `src/mt/align.js`: Gale-Church cümle hizalama + `alignTextsRefine` (iki geçişli:
+  uzunluk → IBM-1 → uzunluk+lexical; gürültülü kitap çiftlerinde daha sağlam).
+- `egit.html`: PDF kitap yükleme (pdf.js metin çıkarma), modeli IndexedDB'de saklama
+  (otomatik geri yükleme), refine hizalama ile eğitim.
 - `egit.html` (+ `egit.template.html`, `scripts/build-mt-bundle.js`): tarayıcıda
   **Web Worker'da eğitim** + çeviri. src/mt tek bir bundle'a derlenir
   (`assets/mt-bundle.js`, gömülü); worker hem hizalama hem **çok çekirdekli** eğitim (parçala→eğit→birleştir) hem **otomatik ağırlık ayarı** (BLEU) yapar; çoklu kitap yükleme + kalite paneli.

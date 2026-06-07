@@ -253,7 +253,7 @@ async function collectPairs(){
   for (let i = 0; i < Math.min(en.length, tr.length); i++) {
     if (en.length) trainText.textContent = `kitap ${i + 1}/${Math.min(en.length, tr.length)} okunuyor...`;
     const et = await readBookText(en[i]), tt = await readBookText(tr[i]);
-    pairs.push(...MT.alignTexts(et, tt));
+    pairs.push(...MT.alignTextsRefine(et, tt));
   }
   return pairs;
 }
