@@ -8,7 +8,9 @@
     "start": "node server.js",
     "dev": "node --watch server.js",
     "setup": "node scripts/download-font.js",
-    "build:web": "node scripts/build-mt-bundle.js"
+    "build:web": "node scripts/build-mt-bundle.js",
+    "test": "node --test",
+    "check:html": "node scripts/check-html.mjs"
   },
   "keywords": [
     "pdf",
@@ -26,5 +28,9 @@
     "multer": "^2.1.1",
     "pdf-lib": "^1.17.1",
     "pdfjs-dist": "^4.10.38"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/bilgekaan-tr/-eviri"
   }
 }
