@@ -62,7 +62,7 @@
     <div class="row">
       <button type="button" id="trainBtn" class="btn btn-primary">Eğit</button>
       <button type="button" id="loadBtn" class="btn">Hazır model.json yükle</button>
-      <input type="file" id="modelInput" accept=".json" hidden />
+      <input type="file" id="modelInput" accept=".json,.gz" hidden />
       <a id="saveModel" class="btn btn-ghost hidden" download="model.json">model.json indir</a>
     </div>
     <div id="trainProg" class="hidden"><div class="progress-bar"><div id="trainFill" class="progress-fill"></div></div><p id="trainText" class="progress-text"></p></div>
@@ -124,13 +124,30 @@ const statusEl=$("status"), resultEl=$("result"), errorEl=$("error");
 const fileName=$("fileName"), progressFill=$("progressFill"), progressText=$("progressText");
 const downloadLink=$("downloadLink"), resetBtn=$("resetBtn"), errorResetBtn=$("errorResetBtn"), errorText=$("errorText");
 
-function modelReady(json, pairs, phrases){
+// gzip (0x1f 0x8b) ise açar; düz JSON ise olduğu gibi döndürür
+async function readModelFile(file){
+  const buf = new Uint8Array(await file.arrayBuffer());
+  if (buf[0] === 0x1f && buf[1] === 0x8b && "DecompressionStream" in window) {
+    const stream = new Blob([buf]).stream().pipeThrough(new DecompressionStream("gzip"));
+    return await new Response(stream).text();
+  }
+  return new TextDecoder().decode(buf);
+}
+async function modelReady(json, pairs, phrases){
   modelJson = json; model = MT.deserializePhrase(json);
   modelBadge.textContent = `✓ model hazır${pairs?` · ${pairs} cümle`:""}${phrases?` · ${phrases} öbek`:""}`;
   dropzone.classList.remove("disabled");
   dropzone.querySelector(".dz-hint").textContent = "Kaynak → Türkçe";
-  const blob = new Blob([json], { type: "application/json" });
-  saveModel.href = URL.createObjectURL(blob); saveModel.classList.remove("hidden");
+  // İndirme: mümkünse gzip (çok daha küçük)
+  if ("CompressionStream" in window) {
+    const gz = new Blob([json]).stream().pipeThrough(new CompressionStream("gzip"));
+    saveModel.href = URL.createObjectURL(await new Response(gz).blob());
+    saveModel.download = "model.json.gz"; saveModel.textContent = "model.json.gz indir";
+  } else {
+    saveModel.href = URL.createObjectURL(new Blob([json], { type: "application/json" }));
+    saveModel.download = "model.json";
+  }
+  saveModel.classList.remove("hidden");
 }
 
 // ---- Eğitim (Web Worker) ----
@@ -187,9 +204,9 @@ loadBtn.addEventListener("click", () => modelInput.click());
 modelInput.addEventListener("change", async () => {
   const f = modelInput.files[0]; if (!f) return;
   try {
-    const json = await f.text(); const raw = JSON.parse(json);
+    const json = await readModelFile(f); const raw = JSON.parse(json);
     if (!Array.isArray(raw.pcounts) && !Array.isArray(raw.ptable)) throw new Error("Geçersiz model.");
-    modelReady(json);
+    await modelReady(json);
   } catch (err) { modelBadge.textContent = "yüklenemedi: " + (err.message || err); }
 });
 

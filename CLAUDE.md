@@ -70,6 +70,8 @@ Sıfırdan, bağımsız SMT motoru. Paralel metinden öğrenir, dış bağımlı
 - `src/mt/tune.js`: korpus BLEU + MERT-benzeri koordinat-yükseliş ile ağırlık
   ayarı (lmWeight/wordBonus/distortionWeight). Ayarlı ağırlıklar modelde saklanır
   (`model.weights`) ve translatePhrase varsayılan olarak kullanır (tarayıcı dahil).
+- model.json **gzip** ile sıkıştırılabilir (CLI `--gzip`; tarayıcıda
+  CompressionStream). Yükleyiciler .gz / 0x1f8b sihirli baytını otomatik açar.
 - Model artık SAYIM (count) saklar; `derivePtable` ile φ türetilir; `mergeModels`
   birden çok modeli sayım düzeyinde birleştirir (parça parça eğitip toplama).
 - Tamamen Node ile test edilebilir (tarayıcı/CDN gerekmez). Yol haritası:

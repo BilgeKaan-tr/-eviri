@@ -47,6 +47,7 @@ node scripts/mt-tune.js --model model.json --dev dev.tsv --save
 **Ek motor özellikleri:**
 - `--stem`: Türkçe köke indirgemeli hizalama (büyük veride veri kıtlığını azaltır).
 - `mt-merge`: modelleri sayım düzeyinde birleştirir (20.000 kitap → parça parça eğit + topla).
+- `--gzip`: model.json'u sıkıştırarak yazar (~5-10x küçük); yükleyiciler otomatik açar.
 - `mt-tune`: `lmWeight`/`wordBonus`/`distortionWeight`'i BLEU'ya göre otomatik ayarlar
   (koordinat-yükseliş); ayarlı ağırlıklar modele kaydedilir ve tarayıcıda da kullanılır.
 

@@ -11,6 +11,7 @@
 //   --tsv : her satir "kaynak<TAB>turkce"
 //   --src/--tgt : iki ayri dosya; i. satir <-> i. satir hizali
 import fs from "node:fs";
+import zlib from "node:zlib";
 import { buildModel, serialize } from "../src/mt/engine.js";
 import { buildPhraseModel, serializePhrase } from "../src/mt/phrase.js";
 
@@ -63,7 +64,15 @@ if (useWord) {
   json = serializePhrase(model);
   info = `öğrenilen öbek sayısı: ${model.ptable.size}`;
 }
-fs.writeFileSync(out, json);
-const kb = Math.round(fs.statSync(out).size / 1024);
-console.log(`✓ Model kaydedildi: ${out} (${kb} KB) — ${((Date.now() - t0) / 1000).toFixed(1)} sn`);
+// --gzip: sıkıştırılmış yaz (büyük modellerde ~5-10x küçük). Çıktı .gz olur.
+const gzip = has("--gzip");
+let outPath = out;
+if (gzip) {
+  if (!outPath.endsWith(".gz")) outPath += ".gz";
+  fs.writeFileSync(outPath, zlib.gzipSync(json, { level: 9 }));
+} else {
+  fs.writeFileSync(outPath, json);
+}
+const kb = Math.round(fs.statSync(outPath).size / 1024);
+console.log(`✓ Model kaydedildi: ${outPath} (${kb} KB${gzip ? `, ham ${Math.round(json.length / 1024)} KB` : ""}) — ${((Date.now() - t0) / 1000).toFixed(1)} sn`);
 console.log(`  ${info}`);
