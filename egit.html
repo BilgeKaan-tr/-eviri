@@ -86,6 +86,7 @@
 
   <!-- 3) Çevir -->
   <h2 style="font-size:15px;margin:0 4px 10px">3) PDF çevir</h2>
+  <div class="row" style="margin:0 4px 8px"><label><input type="checkbox" id="bilingual" /> Çift dilli çıktı (orijinal + Türkçe)</label></div>
   <section id="dropzone" class="dropzone disabled">
     <input type="file" id="fileInput" accept="application/pdf" hidden />
     <div class="dz-icon">⬆️</div>
@@ -98,6 +99,7 @@
     <p id="fileName" style="font-weight:600;margin-bottom:8px"></p>
     <div class="progress-bar"><div id="progressFill" class="progress-fill"></div></div>
     <p id="progressText" class="progress-text">Hazırlanıyor...</p>
+    <button type="button" id="cancelBtn" class="btn btn-ghost" style="margin-top:14px">İptal Et</button>
   </section>
   <section id="result" class="result hidden">
     <div class="result-icon">✅</div><p class="result-text">Çeviri tamamlandı!</p>
@@ -350,21 +352,34 @@ fileInput.addEventListener("change", () => { if (fileInput.files[0]) handleFile(
 dropzone.addEventListener("drop", e => { const f = e.dataTransfer.files[0]; if (f) handleFile(f); });
 resetBtn.addEventListener("click", () => show(dropzone));
 errorResetBtn.addEventListener("click", () => show(dropzone));
+let cancelRequested = false;
+$("cancelBtn").addEventListener("click", () => { cancelRequested = true; progressText.textContent = "İptal ediliyor..."; });
 
 async function handleFile(file){
   if (file.type !== "application/pdf") return fail("Lütfen bir PDF seçin.");
   if (!model) return fail("Önce model eğitin/yükleyin.");
+  cancelRequested = false;
+  const bilingual = $("bilingual").checked;
+  const cache = new Map();
+  const tr = (t) => { let v = cache.get(t); if (v === undefined) { v = MT.translatePhrase(model, t); cache.set(t, v); } return v; };
   fileName.textContent = file.name; progressFill.style.width = "0%"; progressText.textContent = "PDF okunuyor..."; show(statusEl);
   try {
     const pages = await extractPdf(new Uint8Array(await file.arrayBuffer()));
     const outPages = [];
     for (let i = 0; i < pages.length; i++) {
+      if (cancelRequested) { show(dropzone); return; }
       progressFill.style.width = Math.round(i / pages.length * 100) + "%";
       progressText.textContent = `${i + 1}/${pages.length} sayfa çevriliyor...`;
       await sleep(0);
-      const blocks = pages[i].blocks.map(b => ({ text: MT.translatePhrase(model, b.text), heading: b.heading, scale: b.scale }));
+      const blocks = [];
+      for (const b of pages[i].blocks) {
+        const t = tr(b.text);
+        if (bilingual) { blocks.push({ text: b.text, heading: b.heading, scale: b.scale }); blocks.push({ text: t, heading: false, scale: b.scale }); }
+        else blocks.push({ text: t, heading: b.heading, scale: b.scale });
+      }
       outPages.push({ width: pages[i].width, height: pages[i].height, blocks });
     }
+    if (cancelRequested) { show(dropzone); return; }
     progressText.textContent = "PDF oluşturuluyor...";
     const out = await buildPdf(outPages);
     downloadLink.href = URL.createObjectURL(new Blob([out], { type: "application/pdf" }));

@@ -53,6 +53,10 @@
     <button type="button" id="loadModelBtn" class="btn btn-primary">model.json Yükle</button>
   </div>
 
+  <div class="card" style="text-align:left;padding:12px 16px">
+    <label style="font-size:13px;color:var(--muted)"><input type="checkbox" id="bilingual" /> Çift dilli çıktı (orijinal + Türkçe)</label>
+  </div>
+
   <section id="dropzone" class="dropzone disabled">
     <input type="file" id="fileInput" accept="application/pdf" hidden />
     <div class="dz-inner">
@@ -68,6 +72,7 @@
     <div class="file-row"><span id="fileName" class="file-name"></span><span id="phaseLabel" class="phase"></span></div>
     <div class="progress-bar"><div id="progressFill" class="progress-fill"></div></div>
     <p id="progressText" class="progress-text">Hazırlanıyor...</p>
+    <button type="button" id="cancelBtn" class="btn btn-ghost" style="margin-top:14px">İptal Et</button>
   </section>
 
   <section id="result" class="result hidden">
@@ -321,10 +326,16 @@ fileInput.addEventListener("change", ()=>{ if(fileInput.files[0]) handleFile(fil
 dropzone.addEventListener("drop",(e)=>{ const f=e.dataTransfer.files[0]; if(f) handleFile(f); });
 resetBtn.addEventListener("click", reset);
 errorResetBtn.addEventListener("click", reset);
+let cancelRequested=false;
+document.getElementById("cancelBtn").addEventListener("click",()=>{ cancelRequested=true; progressText.textContent="İptal ediliyor..."; });
 
 async function handleFile(file){
   if(file.type!=="application/pdf") return fail("Lütfen bir PDF dosyası seçin.");
   if(!model) return fail("Önce model.json yükleyin.");
+  cancelRequested=false;
+  const bilingual=document.getElementById("bilingual").checked;
+  const cache=new Map(); // aynı paragrafı tekrar çevirme
+  const tr=(t)=>{ let v=cache.get(t); if(v===undefined){ v=translatePhrase(model,t); cache.set(t,v); } return v; };
   fileNameEl.textContent=file.name; phaseLabel.textContent=""; progressFill.style.width="0%";
   progressText.textContent="PDF okunuyor..."; show(statusEl);
   try{
@@ -332,13 +343,20 @@ async function handleFile(file){
     const pages=await extractPdf(buf);
     const translated=[];
     for(let i=0;i<pages.length;i++){
+      if(cancelRequested){ reset(); return; }
       progressFill.style.width=Math.round(i/pages.length*100)+"%";
       phaseLabel.textContent=`${i+1} / ${pages.length} sayfa`;
       progressText.textContent=`${i+1}. sayfa çevriliyor...`;
       await sleep(0); // UI nefes alsın
-      const blocks=pages[i].blocks.map(b=>({text:translatePhrase(model,b.text),heading:b.heading,scale:b.scale}));
+      const blocks=[];
+      for(const b of pages[i].blocks){
+        const t=tr(b.text);
+        if(bilingual){ blocks.push({text:b.text,heading:b.heading,scale:b.scale}); blocks.push({text:t,heading:false,scale:b.scale}); }
+        else blocks.push({text:t,heading:b.heading,scale:b.scale});
+      }
       translated.push({width:pages[i].width, height:pages[i].height, blocks});
     }
+    if(cancelRequested){ reset(); return; }
     progressText.textContent="Çevrilmiş PDF oluşturuluyor...";
     const out=await buildPdf(translated);
     const blob=new Blob([out],{type:"application/pdf"});
