@@ -1,0 +1,9 @@
+* text=auto eol=lf
+*.js text
+*.mjs text
+*.html text
+*.json text
+*.md text
+font-data.js -diff
+assets/mt-bundle.js linguist-generated
+egit.html linguist-generated

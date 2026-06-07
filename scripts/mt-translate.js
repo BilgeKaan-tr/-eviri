@@ -42,4 +42,7 @@ async function readStdin() {
 
 const input = text != null ? text : inFile ? fs.readFileSync(inFile, "utf8") : await readStdin();
 if (!input.trim()) { console.error("Hata: çevrilecek metin yok (--text, --in veya stdin)."); process.exit(1); }
-console.log(doTranslate(input));
+const outPath = arg("--out");
+const result = doTranslate(input);
+if (outPath) { fs.writeFileSync(outPath, result + "\n"); console.error(`✓ yazıldı: ${outPath}`); }
+else console.log(result);
