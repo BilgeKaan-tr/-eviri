@@ -54,9 +54,7 @@ Sıfırdan, bağımsız SMT motoru. Paralel metinden öğrenir, dış bağımlı
   `buildPhraseModel`'de `stem:true` (CLI `--stem`) ile yalnızca HİZALAMA köklerle
   yapılır; öbekler yüzey biçimden çıkar (aşırı-soyma çıktıyı bozmaz).
 - `src/mt/trie.js`: önek-ağacı öbek tablosu + **bilinmeyen kelime yedeği**
-  (`enLemmas`/`lemmaOptions`: İngilizce çekim eki soyup kökü tabloda arar, φ'ye küçük ceza).
-   (ortak önek paylaşımı + erken-durmalı
-  arama). Çözücüler `model._trie`'yi tembel kurar; `phraseOptionsAt` ile aday alır.
+  (`enLemmas`/`lemmaOptions`: İngilizce çekim eki soyup kökü tabloda arar, φ'ye küçük ceza). Ortak önek paylaşımı + erken-durmalı arama. Çözücüler `model._trie`'yi tembel kurar; `phraseOptionsAt` ile aday alır.
 - `src/mt/align.js`: Gale-Church cümle hizalama + `alignTextsRefine` (iki geçişli:
   uzunluk → IBM-1 → uzunluk+lexical; gürültülü kitap çiftlerinde daha sağlam).
 - `egit.html`: PDF kitap yükleme (pdf.js metin çıkarma), modeli IndexedDB'de saklama
@@ -78,8 +76,6 @@ Sıfırdan, bağımsız SMT motoru. Paralel metinden öğrenir, dış bağımlı
   (`model.weights`) ve translatePhrase varsayılan olarak kullanır (tarayıcı dahil).
 - model.json **gzip** ile sıkıştırılabilir (CLI `--gzip`; tarayıcıda
   CompressionStream). Yükleyiciler .gz / 0x1f8b sihirli baytını otomatik açar.
-- : kullanıcı sözlüğünü (kelime⇥karşılık) tek-kelimelik öbek
-  olarak modele katar (bilinmeyen kelime otoritesi); CLI , egit.html sözlük yükleme.
 - `mergeDictionary`: kullanıcı sözlüğünü (kelime/karşılık) tek-kelimelik öbek
   olarak modele katar (bilinmeyen kelime otoritesi); CLI `--dict`, egit.html sözlük yükleme.
 - Model artık SAYIM (count) saklar; `derivePtable` ile φ türetilir; `mergeModels`

@@ -29,8 +29,11 @@ Bu depo, PDF'leri Türkçe'ye çeviren birkaç araç içerir. **Hangisini kullan
 `egit.html`'i çift tıklayıp tarayıcıda açın. **"1) Modeli eğit"** bölümünde:
 - **TSV dosyaları:** Elinizde hizalı `kaynak⇥türkçe` satırları varsa (sekmeyle
   ayrılmış). Birden çok seçebilirsiniz.
-- **veya EN kitaplar / TR kitaplar:** Ham `.txt` kitapları seçin. Birden çok
-  seçebilirsiniz; **sırayla eşleşirler** (1. EN ↔ 1. TR, 2. EN ↔ 2. TR …).
+- **veya EN kitaplar / TR kitaplar:** Kitapları **PDF** ya da .txt olarak seçin
+  (PDF'ten metin otomatik çıkarılır). Birden çok seçebilirsiniz; **sırayla eşleşirler**
+  (1. EN ↔ 1. TR, 2. EN ↔ 2. TR …). Hizalama lexical-destekli (daha sağlam) yapılır.
+- 💾 Eğittiğiniz model **tarayıcıda saklanır**; sayfayı kapatıp açınca otomatik geri yüklenir
+  ("kayıtlı modeli sil" ile temizlenir).
 
 ### 3. Eğit
 **"Eğit"**e basın. Eğitim, bilgisayarınızın **tüm çekirdeklerini** kullanarak
