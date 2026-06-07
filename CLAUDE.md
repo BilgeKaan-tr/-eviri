@@ -68,7 +68,7 @@ Sıfırdan, bağımsız SMT motoru. Paralel metinden öğrenir, dış bağımlı
   `--mincount`, `--iter`), `scripts/mt-translate.js` (model türünü otomatik algılar),
   `scripts/mt-phrase-demo.mjs`, `scripts/mt-morph-demo.mjs`, `scripts/mt-demo.mjs`,
   `scripts/mt-align.js`, `scripts/mt-merge.js`, `scripts/mt-tune.js`,
-  `scripts/mt-train-parallel.js` (+`mt-train-worker.mjs`, çok çekirdekli: parçala→eğit→birleştir),
+  `scripts/mt-train-parallel.js` (+`mt-train-worker.mjs`, çok çekirdekli), `scripts/mt-train-stream.js` (akışlı/bellek-dostu),
   `scripts/mt-tune-demo.mjs`.
 - `src/mt/tune.js`: korpus BLEU + MERT-benzeri koordinat-yükseliş ile ağırlık
   ayarı (lmWeight/wordBonus/distortionWeight). Ayarlı ağırlıklar modelde saklanır
@@ -77,10 +77,16 @@ Sıfırdan, bağımsız SMT motoru. Paralel metinden öğrenir, dış bağımlı
   CompressionStream). Yükleyiciler .gz / 0x1f8b sihirli baytını otomatik açar.
 - : kullanıcı sözlüğünü (kelime⇥karşılık) tek-kelimelik öbek
   olarak modele katar (bilinmeyen kelime otoritesi); CLI , egit.html sözlük yükleme.
+- `mergeDictionary`: kullanıcı sözlüğünü (kelime/karşılık) tek-kelimelik öbek
+  olarak modele katar (bilinmeyen kelime otoritesi); CLI `--dict`, egit.html sözlük yükleme.
 - Model artık SAYIM (count) saklar; `derivePtable` ile φ türetilir; `mergeModels`
   birden çok modeli sayım düzeyinde birleştirir (parça parça eğitip toplama).
 - Tamamen Node ile test edilebilir (tarayıcı/CDN gerekmez). Yol haritası:
   otomatik cümle hizalama, reordering, tarayıcıya entegrasyon.
+
+Çıktı PDF blok-tabanlı dizilir: `itemsToBlocks` font boyutundan başlık algılar,
+`buildPdf` başlıkları büyük yazar, paragraf aralıklarını korur (egit.html + cevir-kendi.html).
+Kullanıcıya yönelik adım adım rehber: `KULLANIM.md`.
 
 ## Geliştirme notları
 - Tarayıcı tarafı JS değişikliğinden sonra: script'i çıkarıp `node --check` ile sözdizimini doğrula.
