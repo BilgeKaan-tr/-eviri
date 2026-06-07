@@ -15,6 +15,7 @@ import {
   trainIBM1,
   trainLM,
   lmScore,
+  lmScore3,
   detokenize,
 } from "./engine.js";
 
@@ -158,7 +159,7 @@ export function decodePhrase(eTokens, model, opts = {}) {
   const { beam = 30, lmWeight = 0.7, topK = 8, wordBonus = 2.5 } = opts;
   const n = eTokens.length;
   const beams = Array.from({ length: n + 1 }, () => []);
-  beams[0] = [{ seq: [], prev: "<s>", score: 0 }];
+  beams[0] = [{ seq: [], h2: "<s>", h1: "<s>", score: 0 }];
 
   for (let i = 0; i < n; i++) {
     if (!beams[i].length) continue;
@@ -180,9 +181,9 @@ export function decodePhrase(eTokens, model, opts = {}) {
       for (const h of beams[i]) {
         for (const [tgtPhrase, p] of options) {
           const words = tgtPhrase === "" ? [] : tgtPhrase.split(" ");
-          let prev = h.prev, sc = h.score + Math.log(p);
-          for (const w of words) { sc += lmWeight * lmScore(lm, prev, w) + wordBonus; prev = w; }
-          beams[i + len].push({ seq: h.seq.concat(words), prev, score: sc });
+          let h2 = h.h2, h1 = h.h1, sc = h.score + Math.log(p);
+          for (const w of words) { sc += lmWeight * lmScore3(lm, h2, h1, w) + wordBonus; h2 = h1; h1 = w; }
+          beams[i + len].push({ seq: h.seq.concat(words), h2, h1, score: sc });
         }
       }
     }
@@ -216,7 +217,7 @@ export function decodePhraseReorder(eTokens, model, opts = {}) {
   };
 
   const stacks = Array.from({ length: n + 1 }, () => []);
-  stacks[0] = [{ cov: 0, lastEnd: 0, prev: "<s>", seq: [], score: 0 }];
+  stacks[0] = [{ cov: 0, lastEnd: 0, h2: "<s>", h1: "<s>", seq: [], score: 0 }];
 
   for (let k = 0; k < n; k++) {
     let st = stacks[k];
@@ -233,10 +234,10 @@ export function decodePhraseReorder(eTokens, model, opts = {}) {
           if (!options) continue;
           for (const [tgtPhrase, p] of options) {
             const words = tgtPhrase === "" ? [] : tgtPhrase.split(" ");
-            let prev = h.prev;
+            let h2 = h.h2, h1 = h.h1;
             let sc = h.score + Math.log(p) - distortionWeight * Math.abs(i - h.lastEnd);
-            for (const w of words) { sc += lmWeight * lmScore(lm, prev, w) + wordBonus; prev = w; }
-            stacks[k + len].push({ cov: h.cov | mask, lastEnd: i + len, prev, seq: h.seq.concat(words), score: sc });
+            for (const w of words) { sc += lmWeight * lmScore3(lm, h2, h1, w) + wordBonus; h2 = h1; h1 = w; }
+            stacks[k + len].push({ cov: h.cov | mask, lastEnd: i + len, h2, h1, seq: h.seq.concat(words), score: sc });
           }
         }
       }
@@ -265,7 +266,10 @@ export function serializePhrase(model) {
     srcLang: model.srcLang,
     maxPhrase: model.maxPhrase,
     ptable: [...model.ptable].map(([s, m]) => [s, [...m]]),
-    lm: { uni: [...model.lm.uni], bi: [...model.lm.bi], V: model.lm.V },
+    lm: {
+      uni: [...model.lm.uni], bi: [...model.lm.bi],
+      tri: model.lm.tri ? [...model.lm.tri] : [], V: model.lm.V, N: model.lm.N || 0,
+    },
   });
 }
 export function deserializePhrase(json) {
@@ -274,6 +278,9 @@ export function deserializePhrase(json) {
     srcLang: o.srcLang,
     maxPhrase: o.maxPhrase,
     ptable: new Map(o.ptable.map(([s, m]) => [s, new Map(m)])),
-    lm: { uni: new Map(o.lm.uni), bi: new Map(o.lm.bi), V: o.lm.V },
+    lm: {
+      uni: new Map(o.lm.uni), bi: new Map(o.lm.bi),
+      tri: new Map(o.lm.tri || []), V: o.lm.V, N: o.lm.N || 0,
+    },
   };
 }

@@ -37,7 +37,7 @@ ve birim testlerle doğrulanır. Gerçek test kullanıcının cihazında yapıl�
 
 Sıfırdan, bağımsız SMT motoru. Paralel metinden öğrenir, dış bağımlılık yok.
 - `src/mt/engine.js` (kelime-tabanlı): tokenize, **IBM Model 1 (EM)** ile
-  `t(tgt|src)`, Türkçe bigram dil modeli, NULL-düşürmeli monoton beam çözücü,
+  `t(tgt|src)`, Türkçe trigram dil modeli (interpolasyonlu), NULL-düşürmeli monoton beam çözücü,
   `serialize`/`deserialize`, `buildModel`/`translate`.
 - `src/mt/phrase.js` (öbek-tabanlı, **varsayılan**): iki yönlü IBM-1 →
   grow-diag-final-and birleştirme → tutarlı öbek çıkarımı → φ(f̄|ē) skorlama →
@@ -51,7 +51,7 @@ Sıfırdan, bağımsız SMT motoru. Paralel metinden öğrenir, dış bağımlı
   `--mincount`, `--iter`), `scripts/mt-translate.js` (model türünü otomatik algılar),
   `scripts/mt-phrase-demo.mjs` (öbek vs kelime), `scripts/mt-demo.mjs`.
 - Tamamen Node ile test edilebilir (tarayıcı/CDN gerekmez). Yol haritası:
-  otomatik cümle hizalama, reordering, trigram LM, tarayıcıya entegrasyon.
+  otomatik cümle hizalama, reordering, tarayıcıya entegrasyon.
 
 ## Geliştirme notları
 - Tarayıcı tarafı JS değişikliğinden sonra: script'i çıkarıp `node --check` ile sözdizimini doğrula.
