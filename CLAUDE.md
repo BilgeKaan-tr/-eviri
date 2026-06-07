@@ -66,6 +66,7 @@ Sıfırdan, bağımsız SMT motoru. Paralel metinden öğrenir, dış bağımlı
   `--mincount`, `--iter`), `scripts/mt-translate.js` (model türünü otomatik algılar),
   `scripts/mt-phrase-demo.mjs`, `scripts/mt-morph-demo.mjs`, `scripts/mt-demo.mjs`,
   `scripts/mt-align.js`, `scripts/mt-merge.js`, `scripts/mt-tune.js`,
+  `scripts/mt-train-parallel.js` (+`mt-train-worker.mjs`, çok çekirdekli: parçala→eğit→birleştir),
   `scripts/mt-tune-demo.mjs`.
 - `src/mt/tune.js`: korpus BLEU + MERT-benzeri koordinat-yükseliş ile ağırlık
   ayarı (lmWeight/wordBonus/distortionWeight). Ayarlı ağırlıklar modelde saklanır

@@ -37,6 +37,9 @@ node scripts/mt-translate.js --model model.json --text "thank you very much"
 # Karşılaştırma gösterimi (öbek vs kelime)
 node scripts/mt-phrase-demo.mjs
 
+# (Çok çekirdek) Korpusu parçalara bölüp paralel eğit + birleştir
+node scripts/mt-train-parallel.js --tsv data.tsv --out model.json --workers 8
+
 # (Büyük veri) Parça parça eğitip birleştir
 node scripts/mt-merge.js --out birlesik.json m1.json m2.json m3.json
 
