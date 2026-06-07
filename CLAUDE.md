@@ -60,7 +60,7 @@ Sıfırdan, bağımsız SMT motoru. Paralel metinden öğrenir, dış bağımlı
 - `src/mt/align.js`: Gale-Church otomatik cümle hizalama (ham metin → çiftler).
 - `egit.html` (+ `egit.template.html`, `scripts/build-mt-bundle.js`): tarayıcıda
   **Web Worker'da eğitim** + çeviri. src/mt tek bir bundle'a derlenir
-  (`assets/mt-bundle.js`, gömülü); worker hem hizalama hem eğitim yapar.
+  (`assets/mt-bundle.js`, gömülü); worker hem hizalama hem **çok çekirdekli** eğitim (parçala→eğit→birleştir) hem **otomatik ağırlık ayarı** (BLEU) yapar; çoklu kitap yükleme + kalite paneli.
   `npm run build:web` ile üretilir. Tek kaynak: src/mt.
 - `cevir-kendi.html`: kendi motorumuzu tarayıcıya gömer; `model.json` yükleyip
   PDF çevirir (çıktı Node motoruyla birebir aynı doğrulandı).

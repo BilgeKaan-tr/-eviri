@@ -54,15 +54,18 @@ node scripts/mt-tune.js --model model.json --dev dev.tsv --save
 - `mt-tune`: `lmWeight`/`wordBonus`/`distortionWeight`'i BLEU'ya göre otomatik ayarlar
   (koordinat-yükseliş); ayarlı ağırlıklar modele kaydedilir ve tarayıcıda da kullanılır.
 
-### Tarayıcıda EĞİT + çevir — `egit.html` (model.json gerekmez)
+### Tarayıcıda EĞİT + çevir — `egit.html` (kitap yükleme sitesi)
 
-Paralel metni (TSV ya da ham iki kitap) verip modeli **doğrudan tarayıcıda,
-Web Worker'da** eğitin; sonra PDF çevirin. Hiçbir kurulum/Node gerekmez.
+Modeli **doğrudan tarayıcıda** eğitin: birden çok kitap yükleyin, **çok çekirdekli**
+eğitim (parçala→worker'larda eğit→birleştir), ve **kalite paneli** (dev BLEU +
+otomatik ağırlık ayarı). model.json gerekmez.
 
 1. Kaynaktan üretmek için: `npm run build:web` (src/mt → `egit.html`).
 2. `egit.html` + `font-data.js` aynı klasörde; `egit.html`'i açın.
-3. TSV (kaynak⇥türkçe) **veya** iki düz metin (EN + TR) yükleyin → **Eğit**.
-4. Model hazır olunca PDF sürükleyin; isterseniz `model.json indir`.
+3. **Birden çok TSV** (kaynak⇥türkçe) **veya** birden çok düz **EN + TR kitap**
+   dosyası yükleyin → **Eğit** (çekirdek sayısı otomatik; isterseniz girin).
+4. (İsteğe bağlı) Bir **dev TSV** verip **BLEU hesapla** / **Otomatik ayarla**.
+5. PDF sürükleyin; isterseniz `modeli indir (.gz)`.
 
 ### Tarayıcıda kendi motorumuzla PDF çevirme — `cevir-kendi.html`
 
