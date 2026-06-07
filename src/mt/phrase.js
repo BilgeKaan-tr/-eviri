@@ -144,19 +144,54 @@ export function buildPhraseModel(parallel, opts = {}) {
     extractPhrases(e, f, A, maxLen, counts, srcCounts); // yüzey biçim
   }
 
-  // Skorla: φ(tgt|src) = count(src,tgt)/count(src); buda + en iyi adayları tut
+  // Ham sayımları sakla (model birleştirme sayım düzeyinde yapılır);
+  // olasılık tablosu (φ) bunlardan türetilir.
+  const lm = trainLM(tgtTok);
+  return {
+    pcounts: counts, scounts: srcCounts,
+    ptable: derivePtable(counts, srcCounts, { minCount, maxCand }),
+    lm, srcLang, maxPhrase: maxLen, minCount, maxCand,
+  };
+}
+
+// φ(tgt|src) = count(src,tgt)/count(src); minCount altını ele, en iyi maxCand'i tut
+export function derivePtable(pcounts, scounts, { minCount = 1, maxCand = 20 } = {}) {
   const ptable = new Map();
-  for (const [src, mm] of counts) {
-    const tot = srcCounts.get(src);
+  for (const [src, mm] of pcounts) {
+    const tot = scounts.get(src);
     const scored = [];
     for (const [tgt, c] of mm) if (c >= minCount) scored.push([tgt, c / tot]);
     if (!scored.length) continue;
     scored.sort((a, b) => b[1] - a[1]);
     ptable.set(src, new Map(scored.slice(0, maxCand)));
   }
+  return ptable;
+}
 
-  const lm = trainLM(tgtTok);
-  return { ptable, lm, srcLang, maxPhrase: maxLen };
+// Birden çok modeli SAYIM düzeyinde birleştirir (20.000 kitabı parça parça
+// eğitip toplamak için). Öbek sayımları, kaynak sayımları ve LM sayımları toplanır.
+export function mergeModels(models) {
+  const pc = new Map(), sc = new Map();
+  const uni = new Map(), bi = new Map(), tri = new Map();
+  let N = 0, maxPhrase = 1;
+  const srcLang = models[0] ? models[0].srcLang : "en";
+  const addInto = (dst, src) => { for (const [k, c] of src) dst.set(k, (dst.get(k) || 0) + c); };
+  for (const m of models) {
+    for (const [src, mm] of m.pcounts) {
+      let d = pc.get(src); if (!d) pc.set(src, (d = new Map()));
+      addInto(d, mm);
+    }
+    addInto(sc, m.scounts);
+    addInto(uni, m.lm.uni); addInto(bi, m.lm.bi);
+    if (m.lm.tri) addInto(tri, m.lm.tri);
+    N += m.lm.N || 0;
+    maxPhrase = Math.max(maxPhrase, m.maxPhrase || 1);
+  }
+  const lm = { uni, bi, tri, V: uni.size, N };
+  return {
+    pcounts: pc, scounts: sc, ptable: derivePtable(pc, sc, { minCount: 1, maxCand: 20 }),
+    lm, srcLang, maxPhrase, minCount: 1, maxCand: 20,
+  };
 }
 
 // ---- 5) Öbek-tabanlı monoton beam çözücü ----
@@ -273,7 +308,10 @@ export function serializePhrase(model) {
   return JSON.stringify({
     srcLang: model.srcLang,
     maxPhrase: model.maxPhrase,
-    ptable: [...model.ptable].map(([s, m]) => [s, [...m]]),
+    minCount: model.minCount || 1,
+    maxCand: model.maxCand || 20,
+    pcounts: [...model.pcounts].map(([s, m]) => [s, [...m]]),
+    scounts: [...model.scounts],
     lm: {
       uni: [...model.lm.uni], bi: [...model.lm.bi],
       tri: model.lm.tri ? [...model.lm.tri] : [], V: model.lm.V, N: model.lm.N || 0,
@@ -282,13 +320,23 @@ export function serializePhrase(model) {
 }
 export function deserializePhrase(json) {
   const o = typeof json === "string" ? JSON.parse(json) : json;
+  const lm = {
+    uni: new Map(o.lm.uni), bi: new Map(o.lm.bi),
+    tri: new Map(o.lm.tri || []), V: o.lm.V, N: o.lm.N || 0,
+  };
+  // Yeni biçim: sayımlar. Eski biçim (ptable) ile de uyumlu.
+  if (o.pcounts) {
+    const pcounts = new Map(o.pcounts.map(([s, m]) => [s, new Map(m)]));
+    const scounts = new Map(o.scounts);
+    return {
+      srcLang: o.srcLang, maxPhrase: o.maxPhrase,
+      minCount: o.minCount || 1, maxCand: o.maxCand || 20,
+      pcounts, scounts, lm,
+      ptable: derivePtable(pcounts, scounts, { minCount: o.minCount || 1, maxCand: o.maxCand || 20 }),
+    };
+  }
   return {
-    srcLang: o.srcLang,
-    maxPhrase: o.maxPhrase,
-    ptable: new Map(o.ptable.map(([s, m]) => [s, new Map(m)])),
-    lm: {
-      uni: new Map(o.lm.uni), bi: new Map(o.lm.bi),
-      tri: new Map(o.lm.tri || []), V: o.lm.V, N: o.lm.N || 0,
-    },
+    srcLang: o.srcLang, maxPhrase: o.maxPhrase,
+    ptable: new Map(o.ptable.map(([s, m]) => [s, new Map(m)])), lm,
   };
 }

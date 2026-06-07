@@ -200,12 +200,27 @@ function translatePhrase(model, text, opts={}){
   }
   return out.join(" ");
 }
+function derivePtable(pcounts, scounts, minCount, maxCand){
+  const ptable=new Map();
+  for(const [src,mm] of pcounts){
+    const tot=scounts.get(src); const scored=[];
+    for(const [tgt,c] of mm) if(c>=minCount) scored.push([tgt,c/tot]);
+    if(!scored.length) continue;
+    scored.sort((a,b)=>b[1]-a[1]);
+    ptable.set(src,new Map(scored.slice(0,maxCand)));
+  }
+  return ptable;
+}
 function deserializePhrase(o){
-  return {
-    srcLang:o.srcLang, maxPhrase:o.maxPhrase,
-    ptable:new Map(o.ptable.map(([s,m])=>[s,new Map(m)])),
-    lm:{uni:new Map(o.lm.uni),bi:new Map(o.lm.bi),tri:new Map(o.lm.tri||[]),V:o.lm.V,N:o.lm.N||0},
-  };
+  const lm={uni:new Map(o.lm.uni),bi:new Map(o.lm.bi),tri:new Map(o.lm.tri||[]),V:o.lm.V,N:o.lm.N||0};
+  if(o.pcounts){ // yeni biçim: sayımlar
+    const pcounts=new Map(o.pcounts.map(([s,m])=>[s,new Map(m)]));
+    const scounts=new Map(o.scounts);
+    return { srcLang:o.srcLang, maxPhrase:o.maxPhrase, lm,
+      ptable:derivePtable(pcounts, scounts, o.minCount||1, o.maxCand||20) };
+  }
+  return { srcLang:o.srcLang, maxPhrase:o.maxPhrase, lm,
+    ptable:new Map(o.ptable.map(([s,m])=>[s,new Map(m)])) };
 }
 
 // ====== UI ======
@@ -228,7 +243,7 @@ modelInput.addEventListener("change", async ()=>{
   const f=modelInput.files[0]; if(!f) return;
   try{
     const raw=JSON.parse(await f.text());
-    if(!Array.isArray(raw.ptable)) throw new Error("Bu bir öbek modeli değil (ptable yok). mt-train.js ile eğitin.");
+    if(!Array.isArray(raw.pcounts) && !Array.isArray(raw.ptable)) throw new Error("Bu bir öbek modeli değil. mt-train.js ile eğitin.");
     model=deserializePhrase(raw);
     modelBadge.textContent=`✓ model hazır · ${model.ptable.size} öbek`;
     dropzone.classList.remove("disabled");

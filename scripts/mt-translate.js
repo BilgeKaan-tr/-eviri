@@ -22,7 +22,7 @@ if (!fs.existsSync(modelPath)) {
   process.exit(1);
 }
 const raw = JSON.parse(fs.readFileSync(modelPath, "utf8"));
-const isPhrase = Array.isArray(raw.ptable);
+const isPhrase = Array.isArray(raw.pcounts) || Array.isArray(raw.ptable);
 const model = isPhrase ? deserializePhrase(raw) : deserialize(raw);
 const doTranslate = (txt) => (isPhrase ? translatePhrase(model, txt) : translateWord(model, txt));
 

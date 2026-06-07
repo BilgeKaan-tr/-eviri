@@ -54,7 +54,10 @@ Sıfırdan, bağımsız SMT motoru. Paralel metinden öğrenir, dış bağımlı
   PDF çevirir (çıktı Node motoruyla birebir aynı doğrulandı).
 - CLI: `scripts/mt-train.js` (varsayılan öbek; `--word` ile kelime; `--maxphrase`,
   `--mincount`, `--iter`), `scripts/mt-translate.js` (model türünü otomatik algılar),
-  `scripts/mt-phrase-demo.mjs` (öbek vs kelime), `scripts/mt-demo.mjs`.
+  `scripts/mt-phrase-demo.mjs`, `scripts/mt-morph-demo.mjs`, `scripts/mt-demo.mjs`,
+  `scripts/mt-align.js`, `scripts/mt-merge.js`.
+- Model artık SAYIM (count) saklar; `derivePtable` ile φ türetilir; `mergeModels`
+  birden çok modeli sayım düzeyinde birleştirir (parça parça eğitip toplama).
 - Tamamen Node ile test edilebilir (tarayıcı/CDN gerekmez). Yol haritası:
   otomatik cümle hizalama, reordering, tarayıcıya entegrasyon.
 
