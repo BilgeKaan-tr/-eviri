@@ -24,8 +24,8 @@ const SUFFIXES = [
 
 function stripOne(w) {
   for (const suf of SUFFIXES) {
-    // kök en az 2 harf kalsın
-    if (w.length > suf.length + 1 && w.endsWith(suf)) {
+    // kök en az 4 harf kalsın (aşırı-soymayı azaltır: "kediler"->"kedi" korunur)
+    if (w.length - suf.length >= 4 && w.endsWith(suf)) {
       return w.slice(0, w.length - suf.length);
     }
   }
@@ -39,9 +39,10 @@ function stripOne(w) {
  */
 export function stemTr(word) {
   let w = word.toLocaleLowerCase("tr");
+  // En fazla 2 ek katmanı soy (derinlik artınca hatalar birikir: kediler->ket)
   for (let k = 0; k < 2; k++) {
     const s = stripOne(w);
-    if (!s || s.length < 2) break;
+    if (!s || s.length < 4) break;
     w = s;
   }
   w = w.replace(/b$/, "p").replace(/c$/, "ç").replace(/d$/, "t").replace(/ğ$/, "k");

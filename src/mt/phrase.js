@@ -345,7 +345,15 @@ export function decodePhraseReorder(eTokens, model, opts = {}) {
     distortionLimit = 5, distortionWeight = 0.25,
   } = opts;
   const n = eTokens.length;
-  if (n > 30 || n === 0) return decodePhrase(eTokens, model, opts); // emniyet (bit maskesi)
+  if (n === 0) return opts.returnScore ? { seq: [], score: 0 } : [];
+  // Uzun cümle: 30-bit maske sınırı. ~26'lık pencerelere bölüp her birini
+  // yeniden sıralayarak çöz (yerel reordering korunur), sonuçları birleştir.
+  if (n > 30) {
+    const W = 26, seq = [];
+    const sub = { ...opts, returnScore: false };
+    for (let s = 0; s < n; s += W) seq.push(...decodePhraseReorder(eTokens.slice(s, s + W), model, sub));
+    return opts.returnScore ? { seq, score: 0 } : seq;
+  }
   const full = (1 << n) - 1;
   const trie = model._trie || (model._trie = buildPhraseTrie(ptable));
 
@@ -429,16 +437,15 @@ export function deserializePhrase(json) {
   if (o.pcounts) {
     const pcounts = new Map(o.pcounts.map(([s, m]) => [s, new Map(m)]));
     const scounts = new Map(o.scounts);
+    const ptable = derivePtable(pcounts, scounts, { minCount: o.minCount || 1, maxCand: o.maxCand || 20 });
     return {
       srcLang: o.srcLang, maxPhrase: o.maxPhrase,
       minCount: o.minCount || 1, maxCand: o.maxCand || 20,
       weights: o.weights || null,
-      pcounts, scounts, lm,
-      ptable: derivePtable(pcounts, scounts, { minCount: o.minCount || 1, maxCand: o.maxCand || 20 }),
+      pcounts, scounts, lm, ptable,
+      _trie: buildPhraseTrie(ptable), // ön-kurulum: ilk çeviri gecikmesini önler
     };
   }
-  return {
-    srcLang: o.srcLang, maxPhrase: o.maxPhrase,
-    ptable: new Map(o.ptable.map(([s, m]) => [s, new Map(m)])), lm,
-  };
+  const ptable = new Map(o.ptable.map(([s, m]) => [s, new Map(m)]));
+  return { srcLang: o.srcLang, maxPhrase: o.maxPhrase, ptable, lm, _trie: buildPhraseTrie(ptable) };
 }

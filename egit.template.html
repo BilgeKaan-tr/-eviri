@@ -413,7 +413,7 @@ function itemsToBlocks(items){
     cur.text += it.str; if (sz > 0) cur.sizes.push(sz); if (y !== null) lastY = y;
   }
   if (cur && cur.text.trim()) blocks.push(cur);
-  for (const b of blocks){ b.text = b.text.replace(/\s+/g, " ").trim(); b.size = median(b.sizes) || 12; delete b.sizes; }
+  for (const b of blocks){ b.text=b.text.replace(/(\p{L})-\s+(\p{L})/gu,"$1$2").replace(/\s+/g," ").trim(); b.size = median(b.sizes) || 12; delete b.sizes; }
   const body = median(blocks.map((b) => b.size)) || 12;
   for (const b of blocks){ b.scale = b.size / body; b.heading = b.size >= body * 1.2 && b.text.length < 120; }
   return blocks;

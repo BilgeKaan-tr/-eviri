@@ -17,7 +17,7 @@ function ngramCounts(tokens, n) {
 }
 
 // Korpus BLEU (n=1..maxN), kısa-set için Lin yumuşatması (n>1)
-export function corpusBleu(cands, refs, maxN = 3) {
+export function corpusBleu(cands, refs, maxN = 4) {
   const clipped = new Array(maxN).fill(0);
   const total = new Array(maxN).fill(0);
   let c = 0, r = 0;

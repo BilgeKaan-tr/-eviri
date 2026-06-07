@@ -107,8 +107,21 @@ function tokenize(text, lang){
   const RE=/(?:https?:\/\/|www\.)\S+|[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}|\d+(?:[.,:/]\d+)*%?|[\p{L}\p{N}]+|[.,!?;:()\[\]"'’“”]/gu;
   return lower.match(RE) || [];
 }
+const ABBR=new Set(["dr","prof","doç","av","sn","vb","vs","bkz","no","s","mö","ms","örn","yy","tdk","abd","tbmm","mr","mrs","st","etc","fig","eq","vol","pp","ör","çev","haz","ed","al","inc","ltd"]);
 function splitSentences(text){
-  return text.replace(/\s+/g," ").split(/(?<=[.!?])\s+/).map(s=>s.trim()).filter(Boolean);
+  const toks=text.replace(/\s+/g," ").trim().split(" ").filter(Boolean);
+  const out=[]; let cur="";
+  for(let i=0;i<toks.length;i++){
+    const tk=toks[i]; cur+=(cur?" ":"")+tk;
+    const m=tk.match(/[.!?]+["')\]”’]?$/); if(!m) continue;
+    const core=tk.slice(0,tk.length-m[0].length);
+    const cl=core.toLowerCase().replace(/[^\p{L}]/gu,"");
+    const isAbbr=ABBR.has(cl), isInitial=cl.length===1, isNumber=/\d$/.test(core);
+    const next=toks[i+1], nextCap=!next||/^[\p{Lu}"'(\[“]/u.test(next);
+    if(!isAbbr&&!isInitial&&!isNumber&&nextCap){ out.push(cur); cur=""; }
+  }
+  if(cur.trim()) out.push(cur.trim());
+  return out;
 }
 const NO_SPACE_BEFORE=new Set([".",",","!","?",";",":",")","]","}","%","'","’","”",'"']);
 const NO_SPACE_AFTER=new Set(["(","[","{","“"]);
@@ -391,7 +404,7 @@ function itemsToBlocks(items){
     cur.text+=it.str; if(sz>0) cur.sizes.push(sz); if(y!==null) lastY=y;
   }
   if(cur&&cur.text.trim()) blocks.push(cur);
-  for(const b of blocks){ b.text=b.text.replace(/\s+/g," ").trim(); b.size=median(b.sizes)||12; delete b.sizes; }
+  for(const b of blocks){ b.text=b.text.replace(/(\p{L})-\s+(\p{L})/gu,"$1$2").replace(/\s+/g," ").trim(); b.size=median(b.sizes)||12; delete b.sizes; }
   const body=median(blocks.map(b=>b.size))||12;
   for(const b of blocks){ b.scale=b.size/body; b.heading=b.size>=body*1.2 && b.text.length<120; }
   return blocks;
