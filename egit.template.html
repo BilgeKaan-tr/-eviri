@@ -64,6 +64,7 @@
       <button type="button" id="loadBtn" class="btn">Hazır model yükle</button>
       <input type="file" id="modelInput" accept=".json,.gz" hidden />
       <a id="saveModel" class="btn btn-ghost hidden" download="model.json.gz">modeli indir (.gz)</a>
+      <button type="button" id="clearModel" class="btn btn-ghost hidden">kayıtlı modeli sil</button>
     </div>
     <div id="trainProg" class="hidden"><div class="progress-bar"><div id="trainFill" class="progress-fill"></div></div><p id="trainText" class="progress-text"></p></div>
   </div>
@@ -159,7 +160,23 @@ const statusEl=$("status"), resultEl=$("result"), errorEl=$("error");
 const fileName=$("fileName"), progressFill=$("progressFill"), progressText=$("progressText");
 const downloadLink=$("downloadLink"), resetBtn=$("resetBtn"), errorResetBtn=$("errorResetBtn"), errorText=$("errorText");
 
+const clearModel = $("clearModel");
 function fail(m){ errorText.textContent = m; show(errorEl); }
+
+// ---- IndexedDB: modeli cihazda sakla (sayfa kapanınca kaybolmasın) ----
+function idb(){ return new Promise((res, rej) => { const r = indexedDB.open("pdfceviri", 1); r.onupgradeneeded = () => r.result.createObjectStore("kv"); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); }); }
+async function idbSet(k, v){ const db = await idb(); return new Promise((res, rej) => { const tx = db.transaction("kv", "readwrite"); tx.objectStore("kv").put(v, k); tx.oncomplete = () => res(); tx.onerror = () => rej(tx.error); }); }
+async function idbGet(k){ const db = await idb(); return new Promise((res, rej) => { const tx = db.transaction("kv", "readonly"); const rq = tx.objectStore("kv").get(k); rq.onsuccess = () => res(rq.result); rq.onerror = () => rej(rq.error); }); }
+async function idbDel(k){ const db = await idb(); return new Promise((res, rej) => { const tx = db.transaction("kv", "readwrite"); tx.objectStore("kv").delete(k); tx.oncomplete = () => res(); tx.onerror = () => rej(tx.error); }); }
+async function gzipBytes(str){ if (!("CompressionStream" in window)) return str; const s = new Blob([str]).stream().pipeThrough(new CompressionStream("gzip")); return new Uint8Array(await new Response(s).arrayBuffer()); }
+async function gunzipMaybe(v){ if (typeof v === "string") return v; if (v && v[0] === 0x1f && v[1] === 0x8b && "DecompressionStream" in window) { const s = new Blob([v]).stream().pipeThrough(new DecompressionStream("gzip")); return await new Response(s).text(); } return new TextDecoder().decode(v); }
+
+clearModel.addEventListener("click", async () => {
+  try { await idbDel("model"); } catch {}
+  model = null; modelJson = null; baseJson = null;
+  modelBadge.textContent = "model yok"; saveModel.classList.add("hidden"); clearModel.classList.add("hidden");
+  dropzone.classList.add("disabled"); bleuBtn.disabled = true; tuneBtn.disabled = true;
+});
 
 // gzip (0x1f 0x8b) ise açar; düz JSON ise olduğu gibi döndürür
 async function readModelFile(file){
@@ -191,6 +208,8 @@ async function finalize(){
     saveModel.download = "model.json"; saveModel.textContent = "modeli indir";
   }
   saveModel.classList.remove("hidden");
+  clearModel.classList.remove("hidden");
+  idbSet("model", await gzipBytes(modelJson)).catch(() => {}); // cihazda sakla
 }
 async function modelReady(json, pairs, phrases){
   baseJson = json; metaPairs = pairs || 0; metaPhrases = phrases || 0; tunedWeights = null;
@@ -421,6 +440,20 @@ function breakLongWord(word, font, size, maxW, out){
   if (font.widthOfTextAtSize(word, size) <= maxW) return word;
   let buf = ""; for (const ch of word){ if (font.widthOfTextAtSize(buf + ch, size) > maxW && buf){ out.push(buf); buf = ch; } else buf += ch; } return buf;
 }
+
+// Sayfa açılışında: cihazda kayıtlı model varsa otomatik geri yükle
+(async () => {
+  try {
+    const v = await idbGet("model");
+    if (!v) return;
+    const json = await gunzipMaybe(v);
+    const raw = JSON.parse(json);
+    if (Array.isArray(raw.pcounts) || Array.isArray(raw.ptable)) {
+      await modelReady(json);
+      modelBadge.textContent = "✓ model cihazdan geri yüklendi · " + (model.ptable.size) + " öbek";
+    }
+  } catch {}
+})();
 </script>
 </body>
 </html>
