@@ -24,6 +24,9 @@ verirsiniz; motor kelime/öbek karşılıklarını öğrenir ve yeni cümleleri 
 - **Kelime-tabanlı (basit):** sadece IBM Model 1 kelime hizalaması. `src/mt/engine.js`
 
 ```bash
+# 0) (İsteğe bağlı) İki ham kitabı otomatik hizala -> TSV
+node scripts/mt-align.js --src kitap-en.txt --tgt kitap-tr.txt --out cift.tsv
+
 # 1) Eğit  (öbek-tabanlı varsayılan)
 node scripts/mt-train.js --tsv data/ornek-paralel.tsv --out model.json --iter 20
 
@@ -34,6 +37,10 @@ node scripts/mt-translate.js --model model.json --text "thank you very much"
 # Karşılaştırma gösterimi (öbek vs kelime)
 node scripts/mt-phrase-demo.mjs
 ```
+
+**Otomatik hizalama (`mt-align`):** 20.000 kitabı elle eşleştiremezsiniz.
+Gale-Church algoritması (cümle uzunluklarına dayalı, dilden bağımsız) iki ham
+metni otomatik hizalar; 1-1, 1-2, 2-1, 2-2 eşleşmelerini bulur. `src/mt/align.js`
 
 **Eğitim seçenekleri:** `--iter` (EM turu), `--maxphrase` (en uzun öbek),
 `--mincount` (büyük veride 2-3 yapın; nadir öbekleri eler), `--word` (kelime motoru).
