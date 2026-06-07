@@ -51,6 +51,8 @@ Sıfırdan, bağımsız SMT motoru. Paralel metinden öğrenir, dış bağımlı
 - `src/mt/morph.js`: hafif Türkçe stemmer (çekim eki soyma + ünsüz sertleştirme).
   `buildPhraseModel`'de `stem:true` (CLI `--stem`) ile yalnızca HİZALAMA köklerle
   yapılır; öbekler yüzey biçimden çıkar (aşırı-soyma çıktıyı bozmaz).
+- `src/mt/trie.js`: önek-ağacı öbek tablosu (ortak önek paylaşımı + erken-durmalı
+  arama). Çözücüler `model._trie`'yi tembel kurar; `phraseOptionsAt` ile aday alır.
 - `src/mt/align.js`: Gale-Church otomatik cümle hizalama (ham metin → çiftler).
 - `cevir-kendi.html`: kendi motorumuzu tarayıcıya gömer; `model.json` yükleyip
   PDF çevirir (çıktı Node motoruyla birebir aynı doğrulandı).

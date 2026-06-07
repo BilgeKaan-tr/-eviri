@@ -19,6 +19,7 @@ import {
   detokenize,
 } from "./engine.js";
 import { stemTokens } from "./morph.js";
+import { buildPhraseTrie, phraseOptionsAt } from "./trie.js";
 
 // ---- 1) Tek yönlü IBM-1 hizalaması ----
 // t: Map(e -> Map(f -> p)).  Her f kelimesini en olası e'ye baglar -> (i,j).
@@ -241,6 +242,7 @@ export function decodePhrase(eTokens, model, opts = {}) {
   // log-olasiliklarini dengeler; olmazsa cozucu "hicbir sey uretmeme"yi secer.
   const { beam = 30, lmWeight = 0.7, topK = 8, wordBonus = 2.5, lexWeight = 0.5 } = opts;
   const n = eTokens.length;
+  const trie = model._trie || (model._trie = buildPhraseTrie(ptable));
   const beams = Array.from({ length: n + 1 }, () => []);
   beams[0] = [{ seq: [], h2: "<s>", h1: "<s>", score: 0 }];
 
@@ -249,18 +251,7 @@ export function decodePhrase(eTokens, model, opts = {}) {
     beams[i].sort((a, b) => b.score - a.score);
     beams[i] = beams[i].slice(0, beam);
 
-    for (let len = 1; len <= maxPhrase && i + len <= n; len++) {
-      const srcPhrase = eTokens.slice(i, i + len).join(" ");
-      const cands = ptable.get(srcPhrase);
-      let options;
-      if (cands && cands.size) {
-        options = [...cands.entries()].sort((a, b) => cOf(b[1]) - cOf(a[1])).slice(0, topK);
-      } else if (len === 1) {
-        // bilinmeyen tek kelime: oldugu gibi gecir (tercih) ya da düşür
-        options = [[eTokens[i], [0.1, 1]], ["", [1e-3, 1]]];
-      } else {
-        continue;
-      }
+    for (const { len, options } of phraseOptionsAt(trie, eTokens, i, n, maxPhrase, topK)) {
       for (const h of beams[i]) {
         for (const [tgtPhrase, pv] of options) {
           const words = tgtPhrase === "" ? [] : tgtPhrase.split(" ");
@@ -290,15 +281,11 @@ export function decodePhraseReorder(eTokens, model, opts = {}) {
   const n = eTokens.length;
   if (n > 30 || n === 0) return decodePhrase(eTokens, model, opts); // emniyet (bit maskesi)
   const full = (1 << n) - 1;
+  const trie = model._trie || (model._trie = buildPhraseTrie(ptable));
 
-  const optionsFor = (srcPhrase, i, len) => {
-    const cands = ptable.get(srcPhrase);
-    if (cands && cands.size) {
-      return [...cands.entries()].sort((a, b) => cOf(b[1]) - cOf(a[1])).slice(0, topK);
-    }
-    if (len === 1) return [[eTokens[i], [0.1, 1]], ["", [1e-3, 1]]];
-    return null;
-  };
+  // Her başlangıç konumu için aday (uzunluk, seçenekler) listesini önceden hesapla.
+  const optsAt = [];
+  for (let i = 0; i < n; i++) optsAt[i] = phraseOptionsAt(trie, eTokens, i, n, maxPhrase, topK);
 
   const stacks = Array.from({ length: n + 1 }, () => []);
   stacks[0] = [{ cov: 0, lastEnd: 0, h2: "<s>", h1: "<s>", seq: [], score: 0 }];
@@ -310,12 +297,10 @@ export function decodePhraseReorder(eTokens, model, opts = {}) {
     st = stacks[k] = st.slice(0, beam);
     for (const h of st) {
       for (let i = 0; i < n; i++) {
-        for (let len = 1; len <= maxPhrase && i + len <= n; len++) {
+        if (Math.abs(i - h.lastEnd) > distortionLimit) continue;
+        for (const { len, options } of optsAt[i]) {
           const mask = ((1 << len) - 1) << i;
-          if ((h.cov & mask) !== 0) break; // çakışma; daha uzunu da çakışır
-          if (Math.abs(i - h.lastEnd) > distortionLimit) continue;
-          const options = optionsFor(eTokens.slice(i, i + len).join(" "), i, len);
-          if (!options) continue;
+          if ((h.cov & mask) !== 0) continue; // çakışma
           for (const [tgtPhrase, pv] of options) {
             const words = tgtPhrase === "" ? [] : tgtPhrase.split(" ");
             let h2 = h.h2, h1 = h.h1;
