@@ -46,12 +46,12 @@
   <div class="card">
     <h2>1) Modeli eğit</h2>
     <span class="badge" id="modelBadge">model yok</span>
-    <p class="muted">Birden çok <b>TSV</b> (her satır: kaynak⇥türkçe) yükleyebilir, <u>veya</u> ham
-      kitapları (düz <b>EN</b> + düz <b>TR</b> dosyaları, sırayla eşleşir) verebilirsiniz. Hepsi birleştirilir.</p>
+    <p class="muted">Birden çok <b>TSV</b> (her satır: kaynak⇥türkçe) yükleyebilir, <u>veya</u> kitapları
+      (<b>EN</b> + <b>TR</b>; <b>.pdf</b> ya da .txt, sırayla eşleşir) verebilirsiniz. Hepsi birleştirilir.</p>
     <div class="row"><label>TSV dosyaları: <input type="file" id="tsvInput" accept=".tsv,.txt" multiple /></label></div>
     <div class="row">
-      <label>EN kitaplar: <input type="file" id="srcInput" accept=".txt" multiple /></label>
-      <label>TR kitaplar: <input type="file" id="tgtInput" accept=".txt" multiple /></label>
+      <label>EN kitaplar: <input type="file" id="srcInput" accept=".txt,.pdf" multiple /></label>
+      <label>TR kitaplar: <input type="file" id="tgtInput" accept=".txt,.pdf" multiple /></label>
     </div>
     <div class="row">
       <label>EM turu <input type="number" id="iter" value="15" min="1" max="60" /></label>
@@ -207,6 +207,21 @@ $("dictInput").addEventListener("change", async () => {
   if (baseJson) await finalize(); // mevcut modele uygula (çift uygulanmaz)
 });
 
+// Kitap dosyasından düz metin çıkar (.pdf ise pdf.js ile, değilse .txt olarak)
+async function readBookText(file){
+  if (/\.pdf$/i.test(file.name)) {
+    const doc = await pdfjsLib.getDocument({ data: new Uint8Array(await file.arrayBuffer()), useSystemFonts: true }).promise;
+    let text = "";
+    for (let i = 1; i <= doc.numPages; i++) {
+      const content = await (await doc.getPage(i)).getTextContent();
+      text += content.items.map((it) => (typeof it.str === "string" ? it.str : "")).join(" ") + "\n";
+    }
+    await doc.destroy();
+    return text;
+  }
+  return await file.text();
+}
+
 // Tüm yüklenenlerden paralel cümle çiftlerini topla
 async function collectPairs(){
   const pairs = [];
@@ -217,7 +232,9 @@ async function collectPairs(){
   }
   const en = [...srcInput.files], tr = [...tgtInput.files];
   for (let i = 0; i < Math.min(en.length, tr.length); i++) {
-    pairs.push(...MT.alignTexts(await en[i].text(), await tr[i].text()));
+    if (en.length) trainText.textContent = `kitap ${i + 1}/${Math.min(en.length, tr.length)} okunuyor...`;
+    const et = await readBookText(en[i]), tt = await readBookText(tr[i]);
+    pairs.push(...MT.alignTexts(et, tt));
   }
   return pairs;
 }
