@@ -43,6 +43,10 @@ Sıfırdan, bağımsız SMT motoru. Paralel metinden öğrenir, dış bağımlı
   grow-diag-final-and birleştirme → tutarlı öbek çıkarımı → φ(f̄|ē) skorlama →
   öbek-tabanlı beam çözücü. Çözücüde **wordBonus** (kelime-üretim ödülü) dil
   modelinin negatif log skorlarını dengeler; yoksa boş çıktı seçilir.
+  `decodePhraseReorder`: distorsiyon sınırlı, coverage (bit maskesi) tabanlı
+  yeniden sıralama (SVO→SOV). `distortionWeight`/`distortionLimit` ile ayarlanır;
+  n>30'da güvenli monoton geri dönüş.
+- `src/mt/align.js`: Gale-Church otomatik cümle hizalama (ham metin → çiftler).
 - CLI: `scripts/mt-train.js` (varsayılan öbek; `--word` ile kelime; `--maxphrase`,
   `--mincount`, `--iter`), `scripts/mt-translate.js` (model türünü otomatik algılar),
   `scripts/mt-phrase-demo.mjs` (öbek vs kelime), `scripts/mt-demo.mjs`.

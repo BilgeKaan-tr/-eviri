@@ -193,11 +193,68 @@ export function decodePhrase(eTokens, model, opts = {}) {
   return final[0].seq;
 }
 
+// ---- Yeniden sıralamalı çözücü (distorsiyon sınırlı, coverage-tabanlı) ----
+// Kaynak öbekleri sıra dışı tüketebilir (örn. İngilizce SVO -> Türkçe SOV).
+// Durum: kapsanan kaynak konumlar (bit maskesi) + son bitiş + önceki kelime.
+export function decodePhraseReorder(eTokens, model, opts = {}) {
+  const { ptable, lm, maxPhrase } = model;
+  const {
+    beam = 50, lmWeight = 0.7, topK = 8, wordBonus = 2.5,
+    distortionLimit = 5, distortionWeight = 0.25,
+  } = opts;
+  const n = eTokens.length;
+  if (n > 30 || n === 0) return decodePhrase(eTokens, model, opts); // emniyet (bit maskesi)
+  const full = (1 << n) - 1;
+
+  const optionsFor = (srcPhrase, i, len) => {
+    const cands = ptable.get(srcPhrase);
+    if (cands && cands.size) {
+      return [...cands.entries()].sort((a, b) => b[1] - a[1]).slice(0, topK);
+    }
+    if (len === 1) return [[eTokens[i], 0.1], ["", 1e-3]];
+    return null;
+  };
+
+  const stacks = Array.from({ length: n + 1 }, () => []);
+  stacks[0] = [{ cov: 0, lastEnd: 0, prev: "<s>", seq: [], score: 0 }];
+
+  for (let k = 0; k < n; k++) {
+    let st = stacks[k];
+    if (!st.length) continue;
+    st.sort((a, b) => b.score - a.score);
+    st = stacks[k] = st.slice(0, beam);
+    for (const h of st) {
+      for (let i = 0; i < n; i++) {
+        for (let len = 1; len <= maxPhrase && i + len <= n; len++) {
+          const mask = ((1 << len) - 1) << i;
+          if ((h.cov & mask) !== 0) break; // çakışma; daha uzunu da çakışır
+          if (Math.abs(i - h.lastEnd) > distortionLimit) continue;
+          const options = optionsFor(eTokens.slice(i, i + len).join(" "), i, len);
+          if (!options) continue;
+          for (const [tgtPhrase, p] of options) {
+            const words = tgtPhrase === "" ? [] : tgtPhrase.split(" ");
+            let prev = h.prev;
+            let sc = h.score + Math.log(p) - distortionWeight * Math.abs(i - h.lastEnd);
+            for (const w of words) { sc += lmWeight * lmScore(lm, prev, w) + wordBonus; prev = w; }
+            stacks[k + len].push({ cov: h.cov | mask, lastEnd: i + len, prev, seq: h.seq.concat(words), score: sc });
+          }
+        }
+      }
+    }
+  }
+  const fin = stacks[n].filter((h) => h.cov === full);
+  if (!fin.length) return decodePhrase(eTokens, model, opts);
+  fin.sort((a, b) => b.score - a.score);
+  return fin[0].seq;
+}
+
 export function translatePhrase(model, text, opts = {}) {
+  const reorder = opts.reorder !== false; // varsayılan: yeniden sıralama açık
   const out = [];
   for (const sent of splitSentences(text)) {
     const e = tokenize(sent, model.srcLang);
-    out.push(detokenize(decodePhrase(e, model, opts)));
+    const dec = reorder ? decodePhraseReorder(e, model, opts) : decodePhrase(e, model, opts);
+    out.push(detokenize(dec));
   }
   return out.join(" ");
 }
