@@ -1,14 +1,29 @@
 # 📄 PDF Çeviri
 
-PDF dosyalarını **tamamen Türkçe'ye** çeviren bir web uygulaması. Dosyayı
-sürükle-bırak ile yükleyin; uygulama metni çıkarır, **Claude API** ile
-Türkçe'ye çevirir ve **Türkçe karakter destekli** (DejaVu Sans gömülü) yeni
-bir PDF üretir.
+PDF dosyalarını **Türkçe'ye** çeviren, **tamamen bağımsız ve çevrimdışı**
+çalışabilen bir araç takımı. Sürükle-bırak ile PDF yükleyin; metin çıkarılır,
+çevrilir ve **Türkçe karakter destekli** (DejaVu Sans gömülü), başlık/paragraf
+düzenini koruyan yeni bir PDF üretilir.
 
-- 🌍 Kaynak dil otomatik algılanır → her dilden Türkçe'ye
-- 🧠 Bağlam farkındalıklı, eksiksiz çeviri (özetlemez, atlamaz)
-- 📑 Sayfa sayfa ilerleme göstergesi
-- 🔤 ğ, ş, ı, İ, ç, ö, ü karakterleri çıktıda doğru görünür
+**Dört kullanım yolu** (detaylar: [`KULLANIM.md`](KULLANIM.md)):
+
+| Araç | Açıklama | Bağımlılık |
+|---|---|---|
+| **`egit.html`** | Kendi motorunu **kitaplarınla eğit** (çok çekirdek, kalite paneli) ve çevir | Yok — tarayıcıda |
+| **`cevir-kendi.html`** | Eğittiğin `model.json` ile **çevir** | Yok |
+| **`cevir.html`** | Hazır **Meta NLLB-200** modeliyle çevir (ilk açılışta iner) | Bir kez model indirir |
+| **Node sunucu** | **Claude API** ile en yüksek kalite | Anthropic kredisi (ücretli) |
+
+- 🔒 **Bağımsız & çevrimdışı:** kendi SMT motorumuz (`src/mt/`) sıfırdan yazıldı;
+  paralel kitaplardan öğrenir, hiçbir API/servise muhtaç değildir.
+- 🌍 Kaynak dil otomatik (NLLB sürümü) · 🔤 ğ, ş, ı, İ, ç, ö, ü doğru görünür
+- 📑 Başlık/paragraf düzeni korunur · 🔁 çeviri önbelleği · ⛔ iptal · 🌓 çift dilli çıktı
+- ✅ `npm test` ile 21 birim test; GitHub Actions CI
+
+> **Benzer projeler:** Düzen-koruyan açık kaynak çeviri için
+> [PDFMathTranslate](https://github.com/PDFMathTranslate/PDFMathTranslate)
+> (Google/DeepL/OpenAI motorlarıyla) öne çıkar. Bu depo ise **kendi motorunu
+> sıfırdan kuran ve tamamen çevrimdışı çalışabilen** olması yönüyle farklıdır.
 
 ## 🧪 Kendi çeviri motorumuz (sıfırdan, bağımsız) — `src/mt/`
 
@@ -42,6 +57,9 @@ node scripts/mt-train-parallel.js --tsv data.tsv --out model.json --workers 8
 
 # (Büyük veri) Parça parça eğitip birleştir
 node scripts/mt-merge.js --out birlesik.json m1.json m2.json m3.json
+
+# Modeli bir doğrulama setinde BLEU ile değerlendir
+node scripts/mt-eval.js --model model.json --dev dev.tsv
 
 # Ağırlıkları doğrulama setinde BLEU'ya göre ayarla ve modele yaz
 node scripts/mt-tune.js --model model.json --dev dev.tsv --save

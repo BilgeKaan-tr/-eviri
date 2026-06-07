@@ -68,7 +68,7 @@ Sıfırdan, bağımsız SMT motoru. Paralel metinden öğrenir, dış bağımlı
 - CLI: `scripts/mt-train.js` (varsayılan öbek; `--word` ile kelime; `--maxphrase`,
   `--mincount`, `--iter`), `scripts/mt-translate.js` (model türünü otomatik algılar),
   `scripts/mt-phrase-demo.mjs`, `scripts/mt-morph-demo.mjs`, `scripts/mt-demo.mjs`,
-  `scripts/mt-align.js`, `scripts/mt-merge.js`, `scripts/mt-tune.js`,
+  `scripts/mt-align.js`, `scripts/mt-merge.js`, `scripts/mt-tune.js`, `scripts/mt-eval.js`,
   `scripts/mt-train-parallel.js` (+`mt-train-worker.mjs`, çok çekirdekli), `scripts/mt-train-stream.js` (akışlı/bellek-dostu),
   `scripts/mt-tune-demo.mjs`.
 - `src/mt/tune.js`: korpus BLEU + MERT-benzeri koordinat-yükseliş ile ağırlık
