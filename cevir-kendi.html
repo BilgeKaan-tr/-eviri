@@ -137,13 +137,29 @@ function buildPhraseTrie(ptable){
   return root;
 }
 const UNK=(tok)=>[[tok,[0.1,1]],["",[1e-3,1]]];
+function enLemmas(tok){
+  const w=tok.toLowerCase(); const out=new Set();
+  if(w.length>3&&w.endsWith("ies")) out.add(w.slice(0,-3)+"y");
+  if(w.length>3&&w.endsWith("es")) out.add(w.slice(0,-2));
+  if(w.length>2&&w.endsWith("s")) out.add(w.slice(0,-1));
+  if(w.length>4&&w.endsWith("ing")){ out.add(w.slice(0,-3)); out.add(w.slice(0,-3)+"e"); }
+  if(w.length>3&&w.endsWith("ed")){ out.add(w.slice(0,-2)); out.add(w.slice(0,-1)); }
+  out.delete(w); return [...out].filter(v=>v.length>=2);
+}
+function lemmaOptions(root, tok, topK){
+  for(const v of enLemmas(tok)){
+    const node=root.ch.get(v);
+    if(node&&node.tr) return [...node.tr.entries()].sort((a,b)=>cOf(b[1])-cOf(a[1])).slice(0,topK).map(([t,pv])=>[t,[cOf(pv)*0.5,lexOf(pv)]]);
+  }
+  return null;
+}
 function phraseOptionsAt(root, eTokens, i, n, maxPhrase, topK){
   const res=[]; let node=root;
   for(let len=1; len<=maxPhrase && i+len<=n; len++){
     node=node.ch.get(eTokens[i+len-1]);
-    if(!node){ if(len===1) res.push({len:1,options:UNK(eTokens[i])}); break; }
+    if(!node){ if(len===1) res.push({len:1,options:lemmaOptions(root,eTokens[i],topK)||UNK(eTokens[i])}); break; }
     if(node.tr) res.push({len,options:[...node.tr.entries()].sort((a,b)=>cOf(b[1])-cOf(a[1])).slice(0,topK)});
-    else if(len===1) res.push({len:1,options:UNK(eTokens[i])});
+    else if(len===1) res.push({len:1,options:lemmaOptions(root,eTokens[i],topK)||UNK(eTokens[i])});
   }
   return res;
 }
