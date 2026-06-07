@@ -29,6 +29,7 @@ const iterations = parseInt(arg("--iter", "15"), 10);
 const maxPhrase = parseInt(arg("--maxphrase", "4"), 10);
 const minCount = parseInt(arg("--mincount", "1"), 10);
 const useWord = has("--word");
+const stem = has("--stem"); // Türkçe köke indirgemeli hizalama (büyük veride önerilir)
 
 let parallel = [];
 if (tsv) {
@@ -58,7 +59,7 @@ if (useWord) {
   json = serialize(model);
   info = `öğrenilen kaynak kelime: ${model.t.size}`;
 } else {
-  const model = buildPhraseModel(parallel, { srcLang, iterations, maxPhrase, minCount });
+  const model = buildPhraseModel(parallel, { srcLang, iterations, maxPhrase, minCount, stem });
   json = serializePhrase(model);
   info = `öğrenilen öbek sayısı: ${model.ptable.size}`;
 }

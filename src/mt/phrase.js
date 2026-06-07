@@ -18,6 +18,7 @@ import {
   lmScore3,
   detokenize,
 } from "./engine.js";
+import { stemTokens } from "./morph.js";
 
 // ---- 1) Tek yönlü IBM-1 hizalaması ----
 // t: Map(e -> Map(f -> p)).  Her f kelimesini en olası e'ye baglar -> (i,j).
@@ -123,17 +124,24 @@ export function buildPhraseModel(parallel, opts = {}) {
     if (e.length && f.length) { pairs.push({ e, f }); tgtTok.push(f); }
   }
 
+  // Hizalama için (opt-in) köke indirgeme: çekimli biçimleri birleştirip
+  // veri kıtlığını azaltır. Token sayısı değişmediğinden konumlar korunur;
+  // öbekler yine YÜZEY biçimden çıkarılır, böylece aşırı-soyma çıktıyı bozmaz.
+  const fa = (f) => (opts.stem ? stemTokens(f) : f);
+  const alignPairs = pairs.map(({ e, f }) => ({ e, f: fa(f) }));
+
   // İki yönlü IBM-1
-  const t = trainIBM1(pairs, iterations);
-  const t2 = trainIBM1(pairs.map(({ e, f }) => ({ e: f, f: e })), iterations);
+  const t = trainIBM1(alignPairs, iterations);
+  const t2 = trainIBM1(alignPairs.map(({ e, f }) => ({ e: f, f: e })), iterations);
 
   // Hizala + öbek çıkar
   const counts = new Map(), srcCounts = new Map();
   for (const { e, f } of pairs) {
-    const a1 = alignEF(e, f, t);
-    const a2 = alignFE(e, f, t2);
-    const A = symmetrize(a1, a2, e.length, f.length);
-    extractPhrases(e, f, A, maxLen, counts, srcCounts);
+    const fs = fa(f);
+    const a1 = alignEF(e, fs, t);
+    const a2 = alignFE(e, fs, t2);
+    const A = symmetrize(a1, a2, e.length, fs.length);
+    extractPhrases(e, f, A, maxLen, counts, srcCounts); // yüzey biçim
   }
 
   // Skorla: φ(tgt|src) = count(src,tgt)/count(src); buda + en iyi adayları tut

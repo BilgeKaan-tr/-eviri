@@ -46,6 +46,9 @@ Sıfırdan, bağımsız SMT motoru. Paralel metinden öğrenir, dış bağımlı
   `decodePhraseReorder`: distorsiyon sınırlı, coverage (bit maskesi) tabanlı
   yeniden sıralama (SVO→SOV). `distortionWeight`/`distortionLimit` ile ayarlanır;
   n>30'da güvenli monoton geri dönüş.
+- `src/mt/morph.js`: hafif Türkçe stemmer (çekim eki soyma + ünsüz sertleştirme).
+  `buildPhraseModel`'de `stem:true` (CLI `--stem`) ile yalnızca HİZALAMA köklerle
+  yapılır; öbekler yüzey biçimden çıkar (aşırı-soyma çıktıyı bozmaz).
 - `src/mt/align.js`: Gale-Church otomatik cümle hizalama (ham metin → çiftler).
 - `cevir-kendi.html`: kendi motorumuzu tarayıcıya gömer; `model.json` yükleyip
   PDF çevirir (çıktı Node motoruyla birebir aynı doğrulandı).
