@@ -20,10 +20,10 @@ Bu depo, PDF'leri Türkçe'ye çeviren birkaç araç içerir. **Hangisini kullan
 ### 1. Hazırlık
 - `egit.html` ve `font-data.js` **aynı klasörde** olsun.
 - (Geliştiriciyseniz `npm run build:web` ile `egit.html` üretilir.)
-- Kitaplarınızı **düz metin (.txt)** olarak hazırlayın:
-  - `kitap1-en.txt` → İngilizce metin
-  - `kitap1-tr.txt` → aynı kitabın Türkçe çevirisi
-  - (PDF/epub iseniz önce .txt'ye dönüştürün.)
+- Kitaplarınızı **PDF** veya **düz metin (.txt)** olarak hazırlayın:
+  - `kitap1-en.pdf` (veya .txt) → İngilizce metin
+  - `kitap1-tr.pdf` (veya .txt) → aynı kitabın Türkçe çevirisi
+  - (epub iseniz önce PDF/.txt'ye dönüştürün.)
 
 ### 2. Aç ve yükle
 `egit.html`'i çift tıklayıp tarayıcıda açın. **"1) Modeli eğit"** bölümünde:
