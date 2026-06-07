@@ -293,6 +293,7 @@ export function decodePhraseReorder(eTokens, model, opts = {}) {
 }
 
 export function translatePhrase(model, text, opts = {}) {
+  opts = { ...(model.weights || {}), ...opts }; // modelde saklı ayarlı ağırlıklar
   const reorder = opts.reorder !== false; // varsayılan: yeniden sıralama açık
   const out = [];
   for (const sent of splitSentences(text)) {
@@ -310,6 +311,7 @@ export function serializePhrase(model) {
     maxPhrase: model.maxPhrase,
     minCount: model.minCount || 1,
     maxCand: model.maxCand || 20,
+    weights: model.weights || null,
     pcounts: [...model.pcounts].map(([s, m]) => [s, [...m]]),
     scounts: [...model.scounts],
     lm: {
@@ -331,6 +333,7 @@ export function deserializePhrase(json) {
     return {
       srcLang: o.srcLang, maxPhrase: o.maxPhrase,
       minCount: o.minCount || 1, maxCand: o.maxCand || 20,
+      weights: o.weights || null,
       pcounts, scounts, lm,
       ptable: derivePtable(pcounts, scounts, { minCount: o.minCount || 1, maxCand: o.maxCand || 20 }),
     };

@@ -192,6 +192,7 @@ function decodePhraseReorder(eTokens, model, opts={}){
   fin.sort((a,b)=>b.score-a.score); return fin[0].seq;
 }
 function translatePhrase(model, text, opts={}){
+  opts={...(model.weights||{}),...opts}; // ayarlı ağırlıklar
   const reorder=opts.reorder!==false;
   const out=[];
   for(const sent of splitSentences(text)){

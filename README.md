@@ -36,7 +36,19 @@ node scripts/mt-translate.js --model model.json --text "thank you very much"
 
 # Karşılaştırma gösterimi (öbek vs kelime)
 node scripts/mt-phrase-demo.mjs
+
+# (Büyük veri) Parça parça eğitip birleştir
+node scripts/mt-merge.js --out birlesik.json m1.json m2.json m3.json
+
+# Ağırlıkları doğrulama setinde BLEU'ya göre ayarla ve modele yaz
+node scripts/mt-tune.js --model model.json --dev dev.tsv --save
 ```
+
+**Ek motor özellikleri:**
+- `--stem`: Türkçe köke indirgemeli hizalama (büyük veride veri kıtlığını azaltır).
+- `mt-merge`: modelleri sayım düzeyinde birleştirir (20.000 kitap → parça parça eğit + topla).
+- `mt-tune`: `lmWeight`/`wordBonus`/`distortionWeight`'i BLEU'ya göre otomatik ayarlar
+  (koordinat-yükseliş); ayarlı ağırlıklar modele kaydedilir ve tarayıcıda da kullanılır.
 
 ### Tarayıcıda kendi motorumuzla PDF çevirme — `cevir-kendi.html`
 
