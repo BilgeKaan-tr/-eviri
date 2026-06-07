@@ -9,3 +9,6 @@ assets/fonts/*.ttf
 # Egitilen modeller (kullanici uretir)
 /model.json
 *.model.json
+
+# Üretilen bundle (egit.html'e gömülür)
+assets/mt-bundle.js

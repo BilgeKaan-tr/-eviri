@@ -7,7 +7,8 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js",
-    "setup": "node scripts/download-font.js"
+    "setup": "node scripts/download-font.js",
+    "build:web": "node scripts/build-mt-bundle.js"
   },
   "keywords": [
     "pdf",

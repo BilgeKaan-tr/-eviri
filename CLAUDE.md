@@ -54,6 +54,10 @@ Sıfırdan, bağımsız SMT motoru. Paralel metinden öğrenir, dış bağımlı
 - `src/mt/trie.js`: önek-ağacı öbek tablosu (ortak önek paylaşımı + erken-durmalı
   arama). Çözücüler `model._trie`'yi tembel kurar; `phraseOptionsAt` ile aday alır.
 - `src/mt/align.js`: Gale-Church otomatik cümle hizalama (ham metin → çiftler).
+- `egit.html` (+ `egit.template.html`, `scripts/build-mt-bundle.js`): tarayıcıda
+  **Web Worker'da eğitim** + çeviri. src/mt tek bir bundle'a derlenir
+  (`assets/mt-bundle.js`, gömülü); worker hem hizalama hem eğitim yapar.
+  `npm run build:web` ile üretilir. Tek kaynak: src/mt.
 - `cevir-kendi.html`: kendi motorumuzu tarayıcıya gömer; `model.json` yükleyip
   PDF çevirir (çıktı Node motoruyla birebir aynı doğrulandı).
 - CLI: `scripts/mt-train.js` (varsayılan öbek; `--word` ile kelime; `--maxphrase`,

@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>PDF Çeviri — Tarayıcıda Eğit (SMT)</title>
+<style>
+  :root{--bg:#0f1115;--card:#1a1d24;--border:#2a2f3a;--text:#e7e9ee;--muted:#9aa0ac;--accent:#6d8bff;--accent-2:#8a6dff;--ok:#3ecf8e;--err:#ff6b6b}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:radial-gradient(1200px 600px at 50% -10%,#1b2030,var(--bg));color:var(--text);min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}
+  .app{width:100%;max-width:580px}
+  header{text-align:center;margin-bottom:22px}
+  h1{font-size:28px;letter-spacing:-.5px}.subtitle{color:var(--muted);margin-top:8px;font-size:14px}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:18px;padding:20px;margin-bottom:16px}
+  .card h2{font-size:15px;margin-bottom:12px}
+  .badge{display:inline-block;font-size:12px;color:var(--ok);border:1px solid var(--border);border-radius:999px;padding:4px 10px;margin-bottom:10px}
+  .muted{color:var(--muted);font-size:13px;line-height:1.6}
+  .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0}
+  label{font-size:13px;color:var(--muted)}
+  input[type=number]{width:64px;background:#232733;border:1px solid var(--border);color:var(--text);padding:6px 8px;border-radius:8px}
+  .btn{display:inline-block;border:1px solid var(--border);background:#232733;color:var(--text);padding:10px 18px;border-radius:10px;font-size:14px;font-weight:600;cursor:pointer;text-decoration:none}
+  .btn:hover{filter:brightness(1.15)}.btn-primary{background:linear-gradient(135deg,var(--accent),var(--accent-2));border:none;color:#fff}
+  .btn-ghost{background:transparent}.btn:disabled{opacity:.5;pointer-events:none}
+  .dropzone{background:var(--card);border:2px dashed var(--border);border-radius:18px;padding:38px 24px;text-align:center;cursor:pointer}
+  .dropzone.dragover{border-color:var(--accent);background:#1d2230}.dropzone.disabled{opacity:.45;pointer-events:none}
+  .dz-icon{font-size:36px;margin-bottom:8px}.dz-text{font-size:17px;font-weight:600}
+  .dz-hint{color:var(--muted);font-size:12px;margin-top:12px}
+  .status,.result,.error{background:var(--card);border:1px solid var(--border);border-radius:18px;padding:24px;text-align:center}
+  .progress-bar{height:9px;background:#232733;border-radius:999px;overflow:hidden;margin-top:6px}
+  .progress-fill{height:100%;width:0;background:linear-gradient(90deg,var(--accent),var(--accent-2));border-radius:999px;transition:width .3s}
+  .progress-text{margin-top:10px;color:var(--muted);font-size:13px}
+  .result-icon{font-size:40px}.result-text{font-size:17px;font-weight:600;margin:8px 0 16px}
+  .error .result-text{color:var(--err);font-size:14px}
+  .hidden{display:none}
+  small{color:var(--muted)}
+</style>
+</head>
+<body>
+<main class="app">
+  <header>
+    <h1>📄 PDF Çeviri — Tarayıcıda Eğit</h1>
+    <p class="subtitle">Kendi SMT motorumuzu doğrudan tarayıcıda eğitin (Web Worker). Sunucu/kurulum yok.</p>
+  </header>
+
+  <!-- Eğitim -->
+  <div class="card">
+    <h2>1) Modeli eğit</h2>
+    <span class="badge" id="modelBadge">model yok</span>
+    <p class="muted">Hizalı <b>TSV</b> (her satır: kaynak⇥türkçe) <u>veya</u> ham iki kitap (düz EN + düz TR; otomatik hizalanır) verin.</p>
+    <div class="row">
+      <label>TSV: <input type="file" id="tsvInput" accept=".tsv,.txt" /></label>
+    </div>
+    <div class="row">
+      <label>EN: <input type="file" id="srcInput" accept=".txt" /></label>
+      <label>TR: <input type="file" id="tgtInput" accept=".txt" /></label>
+    </div>
+    <div class="row">
+      <label>EM turu <input type="number" id="iter" value="15" min="1" max="60" /></label>
+      <label>maks. öbek <input type="number" id="maxphrase" value="4" min="1" max="8" /></label>
+      <label><input type="checkbox" id="stem" /> Türkçe stem</label>
+    </div>
+    <div class="row">
+      <button type="button" id="trainBtn" class="btn btn-primary">Eğit</button>
+      <button type="button" id="loadBtn" class="btn">Hazır model.json yükle</button>
+      <input type="file" id="modelInput" accept=".json" hidden />
+      <a id="saveModel" class="btn btn-ghost hidden" download="model.json">model.json indir</a>
+    </div>
+    <div id="trainProg" class="hidden"><div class="progress-bar"><div id="trainFill" class="progress-fill"></div></div><p id="trainText" class="progress-text"></p></div>
+  </div>
+
+  <h2 style="font-size:15px;margin:0 4px 10px">2) PDF çevir</h2>
+  <section id="dropzone" class="dropzone disabled">
+    <input type="file" id="fileInput" accept="application/pdf" hidden />
+    <div class="dz-icon">⬆️</div>
+    <p class="dz-text">PDF'i buraya sürükleyin</p>
+    <p><button type="button" id="browseBtn" class="btn">Dosya Seç</button></p>
+    <p class="dz-hint">Önce bir model eğitin veya yükleyin</p>
+  </section>
+
+  <section id="status" class="status hidden">
+    <p id="fileName" style="font-weight:600;margin-bottom:8px"></p>
+    <div class="progress-bar"><div id="progressFill" class="progress-fill"></div></div>
+    <p id="progressText" class="progress-text">Hazırlanıyor...</p>
+  </section>
+  <section id="result" class="result hidden">
+    <div class="result-icon">✅</div><p class="result-text">Çeviri tamamlandı!</p>
+    <a id="downloadLink" class="btn btn-primary" download>Çevrilmiş PDF'i İndir</a>
+    <button type="button" id="resetBtn" class="btn btn-ghost">Yeni Dosya</button>
+  </section>
+  <section id="error" class="error hidden">
+    <div class="result-icon">⚠️</div><p id="errorText" class="result-text"></p>
+    <button type="button" id="errorResetBtn" class="btn btn-ghost">Tamam</button>
+  </section>
+
+  <footer style="text-align:center;color:var(--muted);font-size:12px;margin-top:18px;line-height:1.6">
+    Eğitim + çeviri tamamen cihazınızda · Motor: kendi SMT'imiz (öbek+trigram+reordering+lex+stem)
+  </footer>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@pdf-lib/fontkit@1.1.1/dist/fontkit.umd.min.js"></script>
+<script src="font-data.js"></script>
+<!-- SMT motoru (build-mt-bundle.js ile src/mt'den üretilir) -->
+<script>const MT_BUNDLE = /*__MT_BUNDLE__*/;</script>
+
+<script type="module">
+import * as pdfjsLib from "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.min.mjs";
+pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.worker.min.mjs";
+const { PDFDocument, rgb } = PDFLib;
+
+// Ana iş parçacığı: çeviri için MT'yi bundle'dan türet
+const MT = (() => { const s = {}; new Function("self", MT_BUNDLE)(s); return s.MT; })();
+
+const $ = (id) => document.getElementById(id);
+let model = null, modelJson = null;
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+const show = (el) => { for (const s of [dropzone, statusEl, resultEl, errorEl]) s.classList.add("hidden"); el.classList.remove("hidden"); };
+
+const modelBadge=$("modelBadge"), trainBtn=$("trainBtn"), loadBtn=$("loadBtn"), modelInput=$("modelInput"), saveModel=$("saveModel");
+const tsvInput=$("tsvInput"), srcInput=$("srcInput"), tgtInput=$("tgtInput");
+const trainProg=$("trainProg"), trainFill=$("trainFill"), trainText=$("trainText");
+const dropzone=$("dropzone"), fileInput=$("fileInput"), browseBtn=$("browseBtn");
+const statusEl=$("status"), resultEl=$("result"), errorEl=$("error");
+const fileName=$("fileName"), progressFill=$("progressFill"), progressText=$("progressText");
+const downloadLink=$("downloadLink"), resetBtn=$("resetBtn"), errorResetBtn=$("errorResetBtn"), errorText=$("errorText");
+
+function modelReady(json, pairs, phrases){
+  modelJson = json; model = MT.deserializePhrase(json);
+  modelBadge.textContent = `✓ model hazır${pairs?` · ${pairs} cümle`:""}${phrases?` · ${phrases} öbek`:""}`;
+  dropzone.classList.remove("disabled");
+  dropzone.querySelector(".dz-hint").textContent = "Kaynak → Türkçe";
+  const blob = new Blob([json], { type: "application/json" });
+  saveModel.href = URL.createObjectURL(blob); saveModel.classList.remove("hidden");
+}
+
+// ---- Eğitim (Web Worker) ----
+trainBtn.addEventListener("click", async () => {
+  try {
+    const opts = { iterations: +$("iter").value || 15, maxPhrase: +$("maxphrase").value || 4, stem: $("stem").checked };
+    let payload;
+    if (tsvInput.files[0]) {
+      const parallel = [];
+      for (const line of (await tsvInput.files[0].text()).split(/\r?\n/)) {
+        if (!line.trim()) continue; const [src, tgt] = line.split("\t"); if (src && tgt) parallel.push({ src, tgt });
+      }
+      if (!parallel.length) return fail("TSV'den cümle çifti okunamadı.");
+      payload = { parallel, opts };
+    } else if (srcInput.files[0] && tgtInput.files[0]) {
+      payload = { srcText: await srcInput.files[0].text(), tgtText: await tgtInput.files[0].text(), opts };
+    } else {
+      return fail("Eğitim için TSV ya da iki metin (EN+TR) verin.");
+    }
+    trainBtn.disabled = true; trainProg.classList.remove("hidden");
+    trainFill.style.width = "30%"; trainText.textContent = "Eğitiliyor (arka planda)...";
+
+    const workerSrc = MT_BUNDLE + `
+self.onmessage = (e) => {
+  const d = e.data;
+  try {
+    const parallel = d.srcText !== undefined ? self.MT.alignTexts(d.srcText, d.tgtText) : d.parallel;
+    const model = self.MT.buildPhraseModel(parallel, d.opts);
+    self.postMessage({ type:"done", json: self.MT.serializePhrase(model), pairs: parallel.length, phrases: model.ptable.size });
+  } catch (err) { self.postMessage({ type:"error", message: String((err && err.message) || err) }); }
+};`;
+    const worker = new Worker(URL.createObjectURL(new Blob([workerSrc], { type: "text/javascript" })));
+    worker.onmessage = (e) => {
+      const d = e.data;
+      trainBtn.disabled = false;
+      if (d.type === "done") {
+        trainFill.style.width = "100%"; trainText.textContent = `✓ Eğitim bitti · ${d.pairs} cümle · ${d.phrases} öbek`;
+        modelReady(d.json, d.pairs, d.phrases);
+      } else { trainText.textContent = "Hata: " + d.message; }
+      worker.terminate();
+    };
+    worker.onerror = (e) => { trainBtn.disabled = false; trainText.textContent = "Worker hatası: " + (e.message || ""); };
+    worker.postMessage(payload);
+  } catch (err) { trainBtn.disabled = false; fail(err.message || String(err)); }
+});
+
+// ---- Hazır model yükle ----
+loadBtn.addEventListener("click", () => modelInput.click());
+modelInput.addEventListener("change", async () => {
+  const f = modelInput.files[0]; if (!f) return;
+  try {
+    const json = await f.text(); const raw = JSON.parse(json);
+    if (!Array.isArray(raw.pcounts) && !Array.isArray(raw.ptable)) throw new Error("Geçersiz model.");
+    modelReady(json);
+  } catch (err) { modelBadge.textContent = "yüklenemedi: " + (err.message || err); }
+});
+
+// ---- PDF çevir ----
+browseBtn.addEventListener("click", () => fileInput.click());
+dropzone.addEventListener("click", (e) => { if (e.target !== browseBtn) fileInput.click(); });
+fileInput.addEventListener("change", () => { if (fileInput.files[0]) handleFile(fileInput.files[0]); });
+["dragenter","dragover"].forEach(ev => dropzone.addEventListener(ev, e => { e.preventDefault(); dropzone.classList.add("dragover"); }));
+["dragleave","drop"].forEach(ev => dropzone.addEventListener(ev, e => { e.preventDefault(); dropzone.classList.remove("dragover"); }));
+dropzone.addEventListener("drop", e => { const f = e.dataTransfer.files[0]; if (f) handleFile(f); });
+resetBtn.addEventListener("click", () => show(dropzone));
+errorResetBtn.addEventListener("click", () => show(dropzone));
+function fail(m){ errorText.textContent = m; show(errorEl); }
+
+async function handleFile(file){
+  if (file.type !== "application/pdf") return fail("Lütfen bir PDF seçin.");
+  if (!model) return fail("Önce model eğitin/yükleyin.");
+  fileName.textContent = file.name; progressFill.style.width = "0%"; progressText.textContent = "PDF okunuyor..."; show(statusEl);
+  try {
+    const pages = await extractPdf(new Uint8Array(await file.arrayBuffer()));
+    const outPages = [];
+    for (let i = 0; i < pages.length; i++) {
+      progressFill.style.width = Math.round(i / pages.length * 100) + "%";
+      progressText.textContent = `${i + 1}/${pages.length} sayfa çevriliyor...`;
+      await sleep(0);
+      const paras = pages[i].text.split(/\n{2,}/).map(p => p.replace(/\n/g, " ").trim()).filter(Boolean);
+      outPages.push({ width: pages[i].width, height: pages[i].height, text: paras.map(p => MT.translatePhrase(model, p)).join("\n\n") });
+    }
+    progressText.textContent = "PDF oluşturuluyor...";
+    const out = await buildPdf(outPages);
+    downloadLink.href = URL.createObjectURL(new Blob([out], { type: "application/pdf" }));
+    downloadLink.download = file.name.replace(/\.pdf$/i, "") + "-turkce.pdf";
+    progressFill.style.width = "100%"; show(resultEl);
+  } catch (err) { console.error(err); fail(err.message || "Çeviri hatası."); }
+}
+
+// ---- PDF I/O (pdf.js / pdf-lib) ----
+async function extractPdf(data){
+  const doc = await pdfjsLib.getDocument({ data, useSystemFonts: true }).promise;
+  const pages = [];
+  for (let i = 1; i <= doc.numPages; i++) {
+    const page = await doc.getPage(i); const vp = page.getViewport({ scale: 1 });
+    const content = await page.getTextContent();
+    pages.push({ width: vp.width, height: vp.height, text: itemsToText(content.items) });
+  }
+  await doc.destroy(); return pages;
+}
+function itemsToText(items){
+  let out = "", lastY = null;
+  for (const it of items){
+    if (typeof it.str !== "string") continue;
+    const y = it.transform ? it.transform[5] : null;
+    if (lastY !== null && y !== null){ const dy = Math.abs(lastY - y);
+      if (dy > 14) out += "\n\n"; else if (dy > 2) out += "\n";
+      else if (out && !out.endsWith(" ") && !out.endsWith("\n")) out += " "; }
+    out += it.str; if (it.hasEOL) out += "\n"; if (y !== null) lastY = y;
+  }
+  return out.replace(/[ \t]+/g, " ").replace(/ *\n */g, "\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+const MARGIN=50, FONT_SIZE=11, LINE_HEIGHT=16;
+async function buildPdf(pages){
+  const pdf = await PDFDocument.create(); pdf.registerFontkit(fontkit);
+  const font = await pdf.embedFont(Uint8Array.from(atob(window.FONT_B64), c => c.charCodeAt(0)), { subset: true });
+  for (const page of pages){
+    const w = page.width || 595, h = page.height || 842;
+    let cur = pdf.addPage([w, h]); let y = h - MARGIN; const maxW = w - MARGIN * 2;
+    for (const line of layoutText(page.text, font, FONT_SIZE, maxW)){
+      if (y < MARGIN){ cur = pdf.addPage([w, h]); y = h - MARGIN; }
+      if (line.length > 0) cur.drawText(line, { x: MARGIN, y, size: FONT_SIZE, font, color: rgb(0,0,0) });
+      y -= LINE_HEIGHT;
+    }
+  }
+  return pdf.save();
+}
+function layoutText(text, font, size, maxW){
+  const out = [];
+  for (const para of (text || "").split("\n")){
+    if (para.trim() === ""){ out.push(""); continue; }
+    let line = "";
+    for (const word of para.split(/\s+/)){
+      const cand = line ? line + " " + word : word;
+      if (font.widthOfTextAtSize(cand, size) > maxW && line){ out.push(line); line = breakLongWord(word, font, size, maxW, out); }
+      else line = cand;
+    }
+    if (line) out.push(line);
+  }
+  return out;
+}
+function breakLongWord(word, font, size, maxW, out){
+  if (font.widthOfTextAtSize(word, size) <= maxW) return word;
+  let buf = ""; for (const ch of word){ if (font.widthOfTextAtSize(buf + ch, size) > maxW && buf){ out.push(buf); buf = ch; } else buf += ch; } return buf;
+}
+</script>
+</body>
+</html>
