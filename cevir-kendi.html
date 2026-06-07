@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>PDF Çeviri — Kendi Motorumuz (SMT)</title>
+<style>
+  :root{--bg:#0f1115;--card:#1a1d24;--border:#2a2f3a;--text:#e7e9ee;--muted:#9aa0ac;--accent:#6d8bff;--accent-2:#8a6dff;--ok:#3ecf8e;--err:#ff6b6b}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:radial-gradient(1200px 600px at 50% -10%,#1b2030,var(--bg));color:var(--text);min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}
+  .app{width:100%;max-width:560px}
+  header{text-align:center;margin-bottom:24px}
+  h1{font-size:30px;letter-spacing:-.5px}
+  .subtitle{color:var(--muted);margin-top:8px}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:18px;padding:22px;margin-bottom:16px;text-align:center}
+  .badge{display:inline-block;font-size:12px;color:var(--ok);border:1px solid var(--border);border-radius:999px;padding:4px 10px;margin-bottom:12px}
+  .model-text{font-size:14px;color:var(--muted);line-height:1.6;margin-bottom:16px}
+  .dropzone{background:var(--card);border:2px dashed var(--border);border-radius:18px;padding:44px 24px;text-align:center;cursor:pointer;transition:border-color .2s,background .2s,transform .1s}
+  .dropzone.dragover{border-color:var(--accent);background:#1d2230;transform:scale(1.01)}
+  .dropzone.disabled{opacity:.45;pointer-events:none}
+  .dz-icon{font-size:40px;margin-bottom:12px}.dz-text{font-size:18px;font-weight:600}
+  .dz-or{color:var(--muted);margin:10px 0;font-size:14px}.dz-hint{color:var(--muted);font-size:13px;margin-top:16px}
+  .btn{display:inline-block;border:1px solid var(--border);background:#232733;color:var(--text);padding:11px 22px;border-radius:10px;font-size:15px;font-weight:600;cursor:pointer;text-decoration:none}
+  .btn:hover{filter:brightness(1.15)}.btn-primary{background:linear-gradient(135deg,var(--accent),var(--accent-2));border:none;color:#fff}
+  .btn-ghost{background:transparent}
+  .status,.result,.error{background:var(--card);border:1px solid var(--border);border-radius:18px;padding:28px;text-align:center}
+  .file-row{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}
+  .file-name{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:70%}
+  .phase{color:var(--accent);font-size:13px;font-weight:600}
+  .progress-bar{height:10px;background:#232733;border-radius:999px;overflow:hidden}
+  .progress-fill{height:100%;width:0;background:linear-gradient(90deg,var(--accent),var(--accent-2));border-radius:999px;transition:width .3s ease}
+  .progress-text{margin-top:12px;color:var(--muted);font-size:14px}
+  .result-icon{font-size:44px;margin-bottom:8px}.result-text{font-size:18px;font-weight:600;margin-bottom:18px}
+  .result .btn,.error .btn{margin:6px}.error .result-text{color:var(--err);font-size:15px;font-weight:500}
+  footer{text-align:center;color:var(--muted);font-size:12px;margin-top:20px;line-height:1.6}
+  .hidden{display:none}
+</style>
+</head>
+<body>
+<main class="app">
+  <header>
+    <h1>📄 PDF Çeviri — Kendi Motorumuz</h1>
+    <p class="subtitle">Çeviri tamamen bizim SMT motorumuzla, cihazınızda yapılır.</p>
+  </header>
+
+  <div id="modelCard" class="card">
+    <span class="badge" id="modelBadge">model yüklenmedi</span>
+    <p class="model-text">
+      Node'da <code>mt-train.js</code> ile eğittiğiniz <b>model.json</b> dosyasını
+      yükleyin. (İki dilli kitaplarınızdan eğitin; veri arttıkça kalite artar.)
+    </p>
+    <input type="file" id="modelInput" accept=".json,application/json" hidden />
+    <button type="button" id="loadModelBtn" class="btn btn-primary">model.json Yükle</button>
+  </div>
+
+  <section id="dropzone" class="dropzone disabled">
+    <input type="file" id="fileInput" accept="application/pdf" hidden />
+    <div class="dz-inner">
+      <div class="dz-icon">⬆️</div>
+      <p class="dz-text">PDF dosyasını buraya sürükleyin</p>
+      <p class="dz-or">veya</p>
+      <button type="button" id="browseBtn" class="btn">Dosya Seç</button>
+      <p class="dz-hint">Önce model.json yükleyin</p>
+    </div>
+  </section>
+
+  <section id="status" class="status hidden">
+    <div class="file-row"><span id="fileName" class="file-name"></span><span id="phaseLabel" class="phase"></span></div>
+    <div class="progress-bar"><div id="progressFill" class="progress-fill"></div></div>
+    <p id="progressText" class="progress-text">Hazırlanıyor...</p>
+  </section>
+
+  <section id="result" class="result hidden">
+    <div class="result-icon">✅</div><p class="result-text">Çeviri tamamlandı!</p>
+    <a id="downloadLink" class="btn btn-primary" download>Çevrilmiş PDF'i İndir</a>
+    <button type="button" id="resetBtn" class="btn btn-ghost">Yeni Dosya</button>
+  </section>
+
+  <section id="error" class="error hidden">
+    <div class="result-icon">⚠️</div><p id="errorText" class="result-text"></p>
+    <button type="button" id="errorResetBtn" class="btn btn-ghost">Tekrar Dene</button>
+  </section>
+
+  <footer><p>Çeviri motoru: kendi SMT'imiz (öbek-tabanlı + trigram + reordering) · Sadece PDF okuma/yazma için pdf.js/pdf-lib</p></footer>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@pdf-lib/fontkit@1.1.1/dist/fontkit.umd.min.js"></script>
+<script src="font-data.js"></script>
+
+<script type="module">
+import * as pdfjsLib from "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.min.mjs";
+pdfjsLib.GlobalWorkerOptions.workerSrc =
+  "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.worker.min.mjs";
+const { PDFDocument, rgb } = PDFLib;
+
+// ====== KENDİ SMT MOTORUMUZ (çeviri kısmı — src/mt ile aynı mantık) ======
+const SEP = "";
+function trLower(s){ return s.replace(/İ/g,"i").replace(/I/g,"ı").toLocaleLowerCase("tr"); }
+function tokenize(text, lang){
+  const lower = lang==="tr" ? trLower(text) : text.toLowerCase();
+  return lower.match(/[\p{L}\p{N}]+|[.,!?;:]/gu) || [];
+}
+function splitSentences(text){
+  return text.replace(/\s+/g," ").split(/(?<=[.!?])\s+/).map(s=>s.trim()).filter(Boolean);
+}
+function detokenize(tokens){
+  let out="";
+  for(const tok of tokens){ if(/^[.,!?;:]$/.test(tok)) out+=tok; else out+=(out?" ":"")+tok; }
+  return out.replace(/(^\s*[a-zıçğöşü])|([.!?]\s+[a-zıçğöşü])/g, m=>m.toLocaleUpperCase("tr"));
+}
+function lmScore(lm, prev, w){
+  const c=lm.bi.get(prev+SEP+w)||0, cp=lm.uni.get(prev)||0;
+  return Math.log((c+1)/(cp+lm.V));
+}
+function lmScore3(lm, h2, h1, w){
+  if(!lm.tri) return lmScore(lm, h1, w);
+  let p=0;
+  const biCtx=lm.bi.get(h2+SEP+h1)||0;
+  if(biCtx>0) p+=0.6*((lm.tri.get(h2+SEP+h1+SEP+w)||0)/biCtx);
+  const uniCtx=lm.uni.get(h1)||0;
+  if(uniCtx>0) p+=0.3*((lm.bi.get(h1+SEP+w)||0)/uniCtx);
+  p+=0.1*(((lm.uni.get(w)||0)+1)/((lm.N||lm.V)+lm.V));
+  return Math.log(p>0?p:1e-10);
+}
+function decodePhrase(eTokens, model, opts={}){
+  const {ptable, lm, maxPhrase}=model;
+  const {beam=30, lmWeight=0.7, topK=8, wordBonus=2.5}=opts;
+  const n=eTokens.length;
+  const beams=Array.from({length:n+1},()=>[]);
+  beams[0]=[{seq:[],h2:"<s>",h1:"<s>",score:0}];
+  for(let i=0;i<n;i++){
+    if(!beams[i].length) continue;
+    beams[i].sort((a,b)=>b.score-a.score); beams[i]=beams[i].slice(0,beam);
+    for(let len=1; len<=maxPhrase && i+len<=n; len++){
+      const sp=eTokens.slice(i,i+len).join(" ");
+      const cands=ptable.get(sp);
+      let options;
+      if(cands && cands.size) options=[...cands.entries()].sort((a,b)=>b[1]-a[1]).slice(0,topK);
+      else if(len===1) options=[[eTokens[i],0.1],["",1e-3]];
+      else continue;
+      for(const h of beams[i]){
+        for(const [tp,p] of options){
+          const words=tp===""?[]:tp.split(" ");
+          let h2=h.h2,h1=h.h1,sc=h.score+Math.log(p);
+          for(const w of words){ sc+=lmWeight*lmScore3(lm,h2,h1,w)+wordBonus; h2=h1; h1=w; }
+          beams[i+len].push({seq:h.seq.concat(words),h2,h1,score:sc});
+        }
+      }
+    }
+  }
+  const f=beams[n]; if(!f.length) return [];
+  f.sort((a,b)=>b.score-a.score); return f[0].seq;
+}
+function decodePhraseReorder(eTokens, model, opts={}){
+  const {ptable, lm, maxPhrase}=model;
+  const {beam=50, lmWeight=0.7, topK=8, wordBonus=2.5, distortionLimit=5, distortionWeight=0.25}=opts;
+  const n=eTokens.length;
+  if(n>30 || n===0) return decodePhrase(eTokens, model, opts);
+  const full=(1<<n)-1;
+  const optionsFor=(sp,i,len)=>{
+    const c=ptable.get(sp);
+    if(c && c.size) return [...c.entries()].sort((a,b)=>b[1]-a[1]).slice(0,topK);
+    if(len===1) return [[eTokens[i],0.1],["",1e-3]];
+    return null;
+  };
+  const stacks=Array.from({length:n+1},()=>[]);
+  stacks[0]=[{cov:0,lastEnd:0,h2:"<s>",h1:"<s>",seq:[],score:0}];
+  for(let k=0;k<n;k++){
+    let st=stacks[k]; if(!st.length) continue;
+    st.sort((a,b)=>b.score-a.score); st=stacks[k]=st.slice(0,beam);
+    for(const h of st){
+      for(let i=0;i<n;i++){
+        for(let len=1; len<=maxPhrase && i+len<=n; len++){
+          const mask=((1<<len)-1)<<i;
+          if((h.cov&mask)!==0) break;
+          if(Math.abs(i-h.lastEnd)>distortionLimit) continue;
+          const options=optionsFor(eTokens.slice(i,i+len).join(" "),i,len);
+          if(!options) continue;
+          for(const [tp,p] of options){
+            const words=tp===""?[]:tp.split(" ");
+            let h2=h.h2,h1=h.h1,sc=h.score+Math.log(p)-distortionWeight*Math.abs(i-h.lastEnd);
+            for(const w of words){ sc+=lmWeight*lmScore3(lm,h2,h1,w)+wordBonus; h2=h1; h1=w; }
+            stacks[k+len].push({cov:h.cov|mask,lastEnd:i+len,h2,h1,seq:h.seq.concat(words),score:sc});
+          }
+        }
+      }
+    }
+  }
+  const fin=stacks[n].filter(h=>h.cov===full);
+  if(!fin.length) return decodePhrase(eTokens, model, opts);
+  fin.sort((a,b)=>b.score-a.score); return fin[0].seq;
+}
+function translatePhrase(model, text, opts={}){
+  const reorder=opts.reorder!==false;
+  const out=[];
+  for(const sent of splitSentences(text)){
+    const e=tokenize(sent, model.srcLang);
+    out.push(detokenize(reorder?decodePhraseReorder(e,model,opts):decodePhrase(e,model,opts)));
+  }
+  return out.join(" ");
+}
+function deserializePhrase(o){
+  return {
+    srcLang:o.srcLang, maxPhrase:o.maxPhrase,
+    ptable:new Map(o.ptable.map(([s,m])=>[s,new Map(m)])),
+    lm:{uni:new Map(o.lm.uni),bi:new Map(o.lm.bi),tri:new Map(o.lm.tri||[]),V:o.lm.V,N:o.lm.N||0},
+  };
+}
+
+// ====== UI ======
+const $=(id)=>document.getElementById(id);
+const modelBadge=$("modelBadge"), loadModelBtn=$("loadModelBtn"), modelInput=$("modelInput");
+const dropzone=$("dropzone"), fileInput=$("fileInput"), browseBtn=$("browseBtn");
+const statusEl=$("status"), resultEl=$("result"), errorEl=$("error");
+const fileNameEl=$("fileName"), phaseLabel=$("phaseLabel");
+const progressFill=$("progressFill"), progressText=$("progressText");
+const downloadLink=$("downloadLink"), resetBtn=$("resetBtn"), errorResetBtn=$("errorResetBtn"), errorText=$("errorText");
+
+let model=null;
+const sleep=(ms)=>new Promise(r=>setTimeout(r,ms));
+function show(el){ for(const s of [dropzone,statusEl,resultEl,errorEl]) s.classList.add("hidden"); el.classList.remove("hidden"); }
+function reset(){ fileInput.value=""; progressFill.style.width="0%"; show(dropzone); }
+function fail(m){ errorText.textContent=m; show(errorEl); }
+
+loadModelBtn.addEventListener("click", ()=>modelInput.click());
+modelInput.addEventListener("change", async ()=>{
+  const f=modelInput.files[0]; if(!f) return;
+  try{
+    const raw=JSON.parse(await f.text());
+    if(!Array.isArray(raw.ptable)) throw new Error("Bu bir öbek modeli değil (ptable yok). mt-train.js ile eğitin.");
+    model=deserializePhrase(raw);
+    modelBadge.textContent=`✓ model hazır · ${model.ptable.size} öbek`;
+    dropzone.classList.remove("disabled");
+    dropzone.querySelector(".dz-hint").textContent="Kaynak: "+(model.srcLang||"en")+" → Türkçe";
+  }catch(err){ modelBadge.textContent="model yüklenemedi: "+(err.message||err); }
+});
+
+browseBtn.addEventListener("click", ()=>fileInput.click());
+dropzone.addEventListener("click",(e)=>{ if(e.target!==browseBtn) fileInput.click(); });
+fileInput.addEventListener("change", ()=>{ if(fileInput.files[0]) handleFile(fileInput.files[0]); });
+["dragenter","dragover"].forEach(ev=>dropzone.addEventListener(ev,(e)=>{e.preventDefault();dropzone.classList.add("dragover");}));
+["dragleave","drop"].forEach(ev=>dropzone.addEventListener(ev,(e)=>{e.preventDefault();dropzone.classList.remove("dragover");}));
+dropzone.addEventListener("drop",(e)=>{ const f=e.dataTransfer.files[0]; if(f) handleFile(f); });
+resetBtn.addEventListener("click", reset);
+errorResetBtn.addEventListener("click", reset);
+
+async function handleFile(file){
+  if(file.type!=="application/pdf") return fail("Lütfen bir PDF dosyası seçin.");
+  if(!model) return fail("Önce model.json yükleyin.");
+  fileNameEl.textContent=file.name; phaseLabel.textContent=""; progressFill.style.width="0%";
+  progressText.textContent="PDF okunuyor..."; show(statusEl);
+  try{
+    const buf=new Uint8Array(await file.arrayBuffer());
+    const pages=await extractPdf(buf);
+    const translated=[];
+    for(let i=0;i<pages.length;i++){
+      progressFill.style.width=Math.round(i/pages.length*100)+"%";
+      phaseLabel.textContent=`${i+1} / ${pages.length} sayfa`;
+      progressText.textContent=`${i+1}. sayfa çevriliyor...`;
+      await sleep(0); // UI nefes alsın
+      const paras=pages[i].text.split(/\n{2,}/).map(p=>p.replace(/\n/g," ").trim()).filter(Boolean);
+      const tparas=paras.map(p=>translatePhrase(model, p));
+      translated.push({width:pages[i].width, height:pages[i].height, text:tparas.join("\n\n")});
+    }
+    progressText.textContent="Çevrilmiş PDF oluşturuluyor...";
+    const out=await buildPdf(translated);
+    const blob=new Blob([out],{type:"application/pdf"});
+    downloadLink.href=URL.createObjectURL(blob);
+    downloadLink.download=file.name.replace(/\.pdf$/i,"")+"-turkce.pdf";
+    progressFill.style.width="100%"; show(resultEl);
+  }catch(err){ console.error(err); fail(err.message||"Çeviri sırasında bir hata oluştu."); }
+}
+
+// ---- PDF okuma/yazma (sadece I/O için pdf.js / pdf-lib) ----
+async function extractPdf(data){
+  const doc=await pdfjsLib.getDocument({data, useSystemFonts:true}).promise;
+  const pages=[];
+  for(let i=1;i<=doc.numPages;i++){
+    const page=await doc.getPage(i);
+    const vp=page.getViewport({scale:1});
+    const content=await page.getTextContent();
+    pages.push({width:vp.width, height:vp.height, text:itemsToText(content.items)});
+  }
+  await doc.destroy(); return pages;
+}
+function itemsToText(items){
+  let out="", lastY=null;
+  for(const it of items){
+    if(typeof it.str!=="string") continue;
+    const y=it.transform?it.transform[5]:null;
+    if(lastY!==null && y!==null){ const dy=Math.abs(lastY-y);
+      if(dy>14) out+="\n\n"; else if(dy>2) out+="\n";
+      else if(out && !out.endsWith(" ") && !out.endsWith("\n")) out+=" "; }
+    out+=it.str; if(it.hasEOL) out+="\n"; if(y!==null) lastY=y;
+  }
+  return out.replace(/[ \t]+/g," ").replace(/ *\n */g,"\n").replace(/\n{3,}/g,"\n\n").trim();
+}
+const MARGIN=50, FONT_SIZE=11, LINE_HEIGHT=16;
+async function buildPdf(pages){
+  const pdf=await PDFDocument.create(); pdf.registerFontkit(fontkit);
+  const bytes=Uint8Array.from(atob(window.FONT_B64), c=>c.charCodeAt(0));
+  const font=await pdf.embedFont(bytes,{subset:true});
+  for(const page of pages){
+    const w=page.width||595, h=page.height||842;
+    let cur=pdf.addPage([w,h]); let y=h-MARGIN; const maxW=w-MARGIN*2;
+    for(const line of layoutText(page.text, font, FONT_SIZE, maxW)){
+      if(y<MARGIN){ cur=pdf.addPage([w,h]); y=h-MARGIN; }
+      if(line.length>0) cur.drawText(line,{x:MARGIN,y,size:FONT_SIZE,font,color:rgb(0,0,0)});
+      y-=LINE_HEIGHT;
+    }
+  }
+  return pdf.save();
+}
+function layoutText(text, font, size, maxW){
+  const out=[]; for(const para of (text||"").split("\n")){
+    if(para.trim()===""){ out.push(""); continue; }
+    let line="";
+    for(const word of para.split(/\s+/)){
+      const cand=line?line+" "+word:word;
+      if(font.widthOfTextAtSize(cand,size)>maxW && line){ out.push(line); line=breakLongWord(word,font,size,maxW,out); }
+      else line=cand;
+    }
+    if(line) out.push(line);
+  } return out;
+}
+function breakLongWord(word, font, size, maxW, out){
+  if(font.widthOfTextAtSize(word,size)<=maxW) return word;
+  let buf=""; for(const ch of word){
+    if(font.widthOfTextAtSize(buf+ch,size)>maxW && buf){out.push(buf);buf=ch;} else buf+=ch;
+  } return buf;
+}
+</script>
+</body>
+</html>

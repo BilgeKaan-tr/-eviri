@@ -47,6 +47,8 @@ Sıfırdan, bağımsız SMT motoru. Paralel metinden öğrenir, dış bağımlı
   yeniden sıralama (SVO→SOV). `distortionWeight`/`distortionLimit` ile ayarlanır;
   n>30'da güvenli monoton geri dönüş.
 - `src/mt/align.js`: Gale-Church otomatik cümle hizalama (ham metin → çiftler).
+- `cevir-kendi.html`: kendi motorumuzu tarayıcıya gömer; `model.json` yükleyip
+  PDF çevirir (çıktı Node motoruyla birebir aynı doğrulandı).
 - CLI: `scripts/mt-train.js` (varsayılan öbek; `--word` ile kelime; `--maxphrase`,
   `--mincount`, `--iter`), `scripts/mt-translate.js` (model türünü otomatik algılar),
   `scripts/mt-phrase-demo.mjs` (öbek vs kelime), `scripts/mt-demo.mjs`.

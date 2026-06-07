@@ -38,6 +38,19 @@ node scripts/mt-translate.js --model model.json --text "thank you very much"
 node scripts/mt-phrase-demo.mjs
 ```
 
+### Tarayıcıda kendi motorumuzla PDF çevirme — `cevir-kendi.html`
+
+Eğittiğiniz `model.json` ile PDF'leri **kendi SMT motorumuzla** (öbek + trigram +
+reordering) tarayıcıda çevirin. Çeviri tamamen cihazınızda, bizim kodumuzla yapılır
+(pdf.js/pdf-lib yalnızca PDF okuma/yazma için).
+
+1. `cevir-kendi.html` ve `font-data.js` aynı klasörde olsun.
+2. `cevir-kendi.html`'i açın → **model.json Yükle**.
+3. PDF'i sürükleyin; çeviri bitince indirin.
+
+> Tarayıcı motorunun çıktısı, Node motoruyla **birebir aynı** olacak şekilde
+> doğrulanmıştır.
+
 **Otomatik hizalama (`mt-align`):** 20.000 kitabı elle eşleştiremezsiniz.
 Gale-Church algoritması (cümle uzunluklarına dayalı, dilden bağımsız) iki ham
 metni otomatik hizalar; 1-1, 1-2, 2-1, 2-2 eşleşmelerini bulur. `src/mt/align.js`
