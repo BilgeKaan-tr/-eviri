@@ -47,7 +47,9 @@ Sıfırdan, bağımsız SMT motoru. Paralel metinden öğrenir, dış bağımlı
   modelinin negatif log skorlarını dengeler; yoksa boş çıktı seçilir.
   `decodePhraseReorder`: distorsiyon sınırlı, coverage (bit maskesi) tabanlı
   yeniden sıralama (SVO→SOV). `distortionWeight`/`distortionLimit` ile ayarlanır;
-  n>30'da güvenli monoton geri dönüş.
+  n>30'da güvenli monoton geri dönüş. **future cost** (kalan kelimelerin
+  tahmini en iyi skoru) ile eşit-kapsamlı hipotezler adil budanır (küçük
+  beam'de arama hatası azalır; skoru asla düşürmez).
 - `src/mt/morph.js`: hafif Türkçe stemmer (çekim eki soyma + ünsüz sertleştirme).
   `buildPhraseModel`'de `stem:true` (CLI `--stem`) ile yalnızca HİZALAMA köklerle
   yapılır; öbekler yüzey biçimden çıkar (aşırı-soyma çıktıyı bozmaz).

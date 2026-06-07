@@ -171,6 +171,21 @@ function decodePhrase(eTokens, model, opts={}){
   const f=beams[n]; if(!f.length) return [];
   f.sort((a,b)=>b.score-a.score); return f[0].seq;
 }
+function computeFutureCosts(optsAt,n,lexWeight,wordBonus){
+  const fc=Array.from({length:n+1},()=>new Array(n+1).fill(-Infinity));
+  for(let i=0;i<n;i++) for(const {len,options} of optsAt[i]){
+    let best=-Infinity;
+    for(const [tgt,pv] of options){ const words=tgt===""?0:tgt.split(" ").length; const s=Math.log(cOf(pv))+lexWeight*Math.log(lexOf(pv))+words*wordBonus; if(s>best)best=s; }
+    fc[i][i+len]=best;
+  }
+  for(let span=1;span<=n;span++) for(let i=0;i+span<=n;i++){ const j=i+span; for(let k=i+1;k<j;k++){ const v=fc[i][k]+fc[k][j]; if(v>fc[i][j])fc[i][j]=v; } }
+  return fc;
+}
+function futureOf(cov,fc,n){
+  let total=0,i=0;
+  while(i<n){ if(cov&(1<<i)){i++;continue;} let j=i; while(j<n&&!(cov&(1<<j)))j++; const c=fc[i][j]; if(c>-Infinity)total+=c; i=j; }
+  return total;
+}
 function decodePhraseReorder(eTokens, model, opts={}){
   const {ptable, lm, maxPhrase}=model;
   const {beam=50, lmWeight=0.7, topK=8, wordBonus=2.5, lexWeight=0.5, distortionLimit=5, distortionWeight=0.25}=opts;
@@ -180,11 +195,15 @@ function decodePhraseReorder(eTokens, model, opts={}){
   const trie=model._trie||(model._trie=buildPhraseTrie(ptable));
   const optsAt=[];
   for(let i=0;i<n;i++) optsAt[i]=phraseOptionsAt(trie,eTokens,i,n,maxPhrase,topK);
+  // future cost (kalan kelimelerin tahmini en iyi skoru) — adil budama
+  const useFuture=opts.futureCost!==false;
+  const fc=useFuture?computeFutureCosts(optsAt,n,lexWeight,wordBonus):null;
+  const prio=(h)=>fc?h.score+futureOf(h.cov,fc,n):h.score;
   const stacks=Array.from({length:n+1},()=>[]);
   stacks[0]=[{cov:0,lastEnd:0,h2:"<s>",h1:"<s>",seq:[],score:0}];
   for(let k=0;k<n;k++){
     let st=stacks[k]; if(!st.length) continue;
-    st.sort((a,b)=>b.score-a.score); st=stacks[k]=st.slice(0,beam);
+    st.sort((a,b)=>prio(b)-prio(a)); st=stacks[k]=st.slice(0,beam);
     for(const h of st){
       for(let i=0;i<n;i++){
         if(Math.abs(i-h.lastEnd)>distortionLimit) continue;

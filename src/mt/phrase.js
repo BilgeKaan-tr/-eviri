@@ -267,13 +267,55 @@ export function decodePhrase(eTokens, model, opts = {}) {
     }
   }
   const final = beams[n];
-  if (!final.length) return [];
+  if (!final.length) return opts.returnScore ? { seq: [], score: -Infinity } : [];
   final.sort((a, b) => b.score - a.score);
-  return final[0].seq;
+  return opts.returnScore ? { seq: final[0].seq, score: final[0].score } : final[0].seq;
 }
 
 // ---- Yeniden sıralamalı çözücü (distorsiyon sınırlı, coverage-tabanlı) ----
 // Kaynak öbekleri sıra dışı tüketebilir (örn. İngilizce SVO -> Türkçe SOV).
+// Future cost tablosu: fc[i][j] = [i,j) kaynak aralığını çevirmenin tahmini
+// en iyi skoru (LM bağlamı yok sayılır). DP ile alt-aralıklardan birleştirilir.
+function computeFutureCosts(optsAt, n, lexWeight, wordBonus) {
+  const fc = Array.from({ length: n + 1 }, () => new Array(n + 1).fill(-Infinity));
+  // doğrudan: i'den başlayan, tam (j-i) uzunluktaki öbeklerin en iyisi
+  for (let i = 0; i < n; i++) {
+    for (const { len, options } of optsAt[i]) {
+      let best = -Infinity;
+      for (const [tgt, pv] of options) {
+        const words = tgt === "" ? 0 : tgt.split(" ").length;
+        const s = Math.log(cOf(pv)) + lexWeight * Math.log(lexOf(pv)) + words * wordBonus;
+        if (s > best) best = s;
+      }
+      fc[i][i + len] = best;
+    }
+  }
+  // birleştir: daha uzun aralıklar alt-aralık toplamından da olabilir
+  for (let span = 1; span <= n; span++) {
+    for (let i = 0; i + span <= n; i++) {
+      const j = i + span;
+      for (let k = i + 1; k < j; k++) {
+        const v = fc[i][k] + fc[k][j];
+        if (v > fc[i][j]) fc[i][j] = v;
+      }
+    }
+  }
+  return fc;
+}
+// Kapsanmamış (cov'da 0 olan) maksimal aralıkların future cost toplamı
+function futureOf(cov, fc, n) {
+  let total = 0, i = 0;
+  while (i < n) {
+    if (cov & (1 << i)) { i++; continue; }
+    let j = i;
+    while (j < n && !(cov & (1 << j))) j++;
+    const c = fc[i][j];
+    if (c > -Infinity) total += c;
+    i = j;
+  }
+  return total;
+}
+
 // Durum: kapsanan kaynak konumlar (bit maskesi) + son bitiş + önceki kelime.
 export function decodePhraseReorder(eTokens, model, opts = {}) {
   const { ptable, lm, maxPhrase } = model;
@@ -290,13 +332,20 @@ export function decodePhraseReorder(eTokens, model, opts = {}) {
   const optsAt = [];
   for (let i = 0; i < n; i++) optsAt[i] = phraseOptionsAt(trie, eTokens, i, n, maxPhrase, topK);
 
+  // Future cost: kalan kelimeleri çevirmenin tahmini en iyi skoru. Eşit-kapsamlı
+  // hipotezleri adil karşılaştırır (arama hatalarını azaltır). Budama içindir;
+  // nihai (tam kapsam) skorunu etkilemez.
+  const useFuture = opts.futureCost !== false;
+  const fc = useFuture ? computeFutureCosts(optsAt, n, lexWeight, wordBonus) : null;
+  const prio = (h) => (fc ? h.score + futureOf(h.cov, fc, n) : h.score);
+
   const stacks = Array.from({ length: n + 1 }, () => []);
   stacks[0] = [{ cov: 0, lastEnd: 0, h2: "<s>", h1: "<s>", seq: [], score: 0 }];
 
   for (let k = 0; k < n; k++) {
     let st = stacks[k];
     if (!st.length) continue;
-    st.sort((a, b) => b.score - a.score);
+    st.sort((a, b) => prio(b) - prio(a));
     st = stacks[k] = st.slice(0, beam);
     for (const h of st) {
       for (let i = 0; i < n; i++) {
@@ -318,7 +367,7 @@ export function decodePhraseReorder(eTokens, model, opts = {}) {
   const fin = stacks[n].filter((h) => h.cov === full);
   if (!fin.length) return decodePhrase(eTokens, model, opts);
   fin.sort((a, b) => b.score - a.score);
-  return fin[0].seq;
+  return opts.returnScore ? { seq: fin[0].seq, score: fin[0].score } : fin[0].seq;
 }
 
 export function translatePhrase(model, text, opts = {}) {
