@@ -40,7 +40,13 @@ export async function translateText(text) {
   const chunks = splitText(text, MAX_CHARS);
   const results = [];
   for (const chunk of chunks) {
-    results.push(await translateChunk(chunk));
+    // Kısmi başarı: bir parça başarısız olursa orijinalini koru, sayfayı kurtar
+    try {
+      results.push(await translateChunk(chunk));
+    } catch (e) {
+      console.error(`[translate] parça hatası, orijinal korunuyor: ${e.message}`);
+      results.push(chunk);
+    }
   }
   return results.join("\n");
 }

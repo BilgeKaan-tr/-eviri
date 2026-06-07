@@ -14,6 +14,13 @@ const MARGIN = 50;
 const FONT_SIZE = 11;
 const LINE_HEIGHT = 16;
 
+// Font baytlarını bir kez oku (her PDF'te disk I/O yapma)
+let _fontBytes = null;
+function fontBytes() {
+  if (!_fontBytes) _fontBytes = fs.readFileSync(path.join(FONT_DIR, "DejaVuSans.ttf"));
+  return _fontBytes;
+}
+
 /**
  * @param {{width:number,height:number,text:string}[]} pages
  * @returns {Promise<Uint8Array>}
@@ -22,10 +29,7 @@ export async function buildPdf(pages) {
   const pdf = await PDFDocument.create();
   pdf.registerFontkit(fontkit);
 
-  const regular = await pdf.embedFont(
-    fs.readFileSync(path.join(FONT_DIR, "DejaVuSans.ttf")),
-    { subset: true }
-  );
+  const regular = await pdf.embedFont(fontBytes(), { subset: true });
 
   for (const page of pages) {
     const width = page.width || 595; // A4 fallback

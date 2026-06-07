@@ -6,7 +6,7 @@ import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
  * @param {Buffer} buffer - PDF dosyasinin icerigi
  * @returns {Promise<{pages: {width:number,height:number,text:string}[]}>}
  */
-export async function extractPdf(buffer) {
+export async function extractPdf(buffer, opts = {}) {
   const data = new Uint8Array(buffer);
   const doc = await getDocument({
     data,
@@ -14,6 +14,11 @@ export async function extractPdf(buffer) {
     // Konsolu uyarilarla doldurmasin
     verbosity: 0,
   }).promise;
+
+  if (opts.maxPages && doc.numPages > opts.maxPages) {
+    await doc.destroy();
+    throw new Error(`PDF çok uzun (${doc.numPages} sayfa). En fazla ${opts.maxPages} sayfa desteklenir.`);
+  }
 
   const pages = [];
   for (let i = 1; i <= doc.numPages; i++) {
