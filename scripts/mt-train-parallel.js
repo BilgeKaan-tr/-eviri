@@ -25,6 +25,7 @@ const opts = {
   maxPhrase: parseInt(arg("--maxphrase", "4"), 10),
   minCount: parseInt(arg("--mincount", "1"), 10),
   stem: has("--stem"),
+  segment: has("--segment"), // Türkçe morfolojik segmentasyon (kök+ek)
 };
 const nWorkers = parseInt(arg("--workers", String(os.cpus().length)), 10);
 

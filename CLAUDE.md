@@ -30,8 +30,11 @@ ve birim testlerle doğrulanır. Gerçek test kullanıcının cihazında yapıl�
 ## 2) Node.js sunucu sürümü (alternatif, Claude API, ücretli)
 
 `server.js` + `src/` + `public/`. Anthropic Claude API ile en yüksek kalite, ama kredi gerektirir.
-- `src/extract.js` (pdfjs, **blok/başlık algılama** + tire-birleştirme + maxPages),
-  `src/translate.js` (Claude, chunk + retry + parça-bazlı kısmi başarı + model param),
+- `src/extract.js` (pdfjs, **blok/başlık algılama** + tire-birleştirme + maxPages +
+  **çok sütun tespiti**: `orderByColumns` iki sütunlu sayfada parçaları SOL/SAĞ
+  sütuna ayırıp ardışık sıralar — akademik PDF'lerde iç içe geçmeyi önler),
+  `src/translate.js` (Claude, chunk + retry + parça-bazlı kısmi başarı + model param +
+  **parçalar arası bağlam** + **terim sözlüğü** `glossaryBlock`/`GLOSSARY_PATH`),
   `src/build.js` (pdf-lib, **başlık=bold/büyük**, font baytları önbellekli).
 - `server.js`: güvenlik başlıkları, IP hız sınırı, MAX_JOBS/MAX_PAGES, %PDF magic-byte,
   multer hata yakalama, SSE heartbeat, /api/cancel, paralel+önbellekli blok çevirisi,
@@ -47,19 +50,31 @@ Sıfırdan, bağımsız SMT motoru. Paralel metinden öğrenir, dış bağımlı
   `t(tgt|src)`, Türkçe trigram dil modeli (interpolasyonlu), NULL-düşürmeli monoton beam çözücü,
   `serialize`/`deserialize`, `buildModel`/`translate`.
 - `src/mt/phrase.js` (öbek-tabanlı, **varsayılan**): iki yönlü IBM-1 →
-  grow-diag-final-and birleştirme → tutarlı öbek çıkarımı → φ(f̄|ē) skorlama →
-  öbek-tabanlı beam çözücü + **lexical weighting** (öbeğin kelime düzeyi güveni
-  `lex(f̄|ē)`; sayımlar `[count, lex]` saklanır, aday skoru `logφ + lexWeight·log lex`).
-  Çözücüde **wordBonus** (kelime-üretim ödülü) dil
-  modelinin negatif log skorlarını dengeler; yoksa boş çıktı seçilir.
+  grow-diag-final-and birleştirme → tutarlı öbek çıkarımı → **4 özellikli skorlama**
+  `[φ(f|e), lex(f|e), φ(e|f), lex(e|f)]` (ileri+ters yön; ters yön "hedefte yaygın
+  ama kaynağa nadir" öbekleri bastırır — Moses'taki 4-skor) → öbek-tabanlı beam
+  çözücü. Sayımlar `[count, lexFE, lexEF]`; hedef öbek sayımları `tcounts` ile
+  φ(e|f) türetilir. Aday skoru `logφfe + lexWeight·log lexFE + invWeight·log φef
+  + invLexWeight·log lexEF`. Eski 2'li modeller/UNK adayları için ters katkı 0
+  (geriye dönük uyumlu). Çözücüde **wordBonus** dil modelinin negatif log
+  skorlarını dengeler; yoksa boş çıktı seçilir.
   `decodePhraseReorder`: distorsiyon sınırlı, coverage (bit maskesi) tabanlı
   yeniden sıralama (SVO→SOV). `distortionWeight`/`distortionLimit` ile ayarlanır;
-  n>30'da güvenli monoton geri dönüş. **future cost** (kalan kelimelerin
-  tahmini en iyi skoru) ile eşit-kapsamlı hipotezler adil budanır (küçük
-  beam'de arama hatası azalır; skoru asla düşürmez).
+  n>30'da **noktalama/yan-cümle sınırında** bölerek çözer (SOV sıralaması cümle
+  parçası ortasından kesilmez). **future cost** (kalan kelimelerin tahmini en iyi
+  skoru) ile eşit-kapsamlı hipotezler adil budanır.
 - `src/mt/morph.js`: hafif Türkçe stemmer (çekim eki soyma + ünsüz sertleştirme).
   `buildPhraseModel`'de `stem:true` (CLI `--stem`) ile yalnızca HİZALAMA köklerle
-  yapılır; öbekler yüzey biçimden çıkar (aşırı-soyma çıktıyı bozmaz).
+  yapılır; öbekler yüzey biçimden çıkar (aşırı-soyma çıktıyı bozmaz). Ünsüz
+  sertleştirme YALNIZCA gerçekten ek soyulduğunda uygulanır (yoksa "web"→"wep").
+- `src/mt/turkmorph.js`: Türkçe **morfolojik segmentasyon + üretim** (opt-in,
+  CLI `--segment`). Eğitimde Türkçe yüzey biçim kök + soyut ek etiketlerine ayrılır
+  (`evlerinde`→`ev +LER +POSS +LOC`); model ekleri bağımsız öğrenir, çıktıda
+  `glueTokens`/`glueOne` **ünlü uyumu** + ünsüz yumuşamasıyla yüzey biçim sentezler.
+  `segmentWord` **kayıpsız round-trip garantili** (yalnızca `glueOne` ile orijinali
+  birebir geri veren en derin ayrışmayı seçer) → hatalı analiz çıktıyı bozmaz.
+  Yüzey-biçim öbek tavanını kıran asıl mekanizma; mevcut modelleri bozmamak için
+  varsayılan KAPALI. Model `segmented` bayrağı serileştirilir.
 - `src/mt/trie.js`: önek-ağacı öbek tablosu + **bilinmeyen kelime yedeği**
   (`enLemmas`/`lemmaOptions`: İngilizce çekim eki soyup kökü tabloda arar, φ'ye küçük ceza). Ortak önek paylaşımı + erken-durmalı arama. Çözücüler `model._trie`'yi tembel kurar; `phraseOptionsAt` ile aday alır.
 - `src/mt/align.js`: **BANTLI** Gale-Church (köşegen bandı + tipli dizi → binlerce
@@ -80,9 +95,12 @@ Sıfırdan, bağımsız SMT motoru. Paralel metinden öğrenir, dış bağımlı
   `scripts/mt-train-parallel.js` (+`mt-train-worker.mjs`, çok çekirdekli), `scripts/mt-train-stream.js` (akışlı/bellek-dostu),
   `scripts/mt-fetch-corpus.js` (OPUS EN-TR korpus indir+TSV),
   `scripts/mt-tune-demo.mjs`.
-- `src/mt/tune.js`: korpus BLEU + MERT-benzeri koordinat-yükseliş ile ağırlık
-  ayarı (lmWeight/wordBonus/distortionWeight). Ayarlı ağırlıklar modelde saklanır
-  (`model.weights`) ve translatePhrase varsayılan olarak kullanır (tarayıcı dahil).
+- `src/mt/tune.js`: korpus BLEU **ve chrF** (karakter n-gram F2 — sondan eklemeli
+  Türkçe için kelime-BLEU'dan daha bilgilendirici; `evaluate(...,metric)`,
+  `tuneWeights({metric})`) + MERT-benzeri koordinat-yükseliş ile ağırlık ayarı
+  (lmWeight/wordBonus/distortionWeight/lexWeight/**invWeight/invLexWeight**). Ayarlı
+  ağırlıklar modelde saklanır (`model.weights`) ve translatePhrase varsayılan kullanır.
+  `mt-eval` hem BLEU hem chrF raporlar.
 - model.json **gzip** ile sıkıştırılabilir (CLI `--gzip`; tarayıcıda
   CompressionStream). Yükleyiciler .gz / 0x1f8b sihirli baytını otomatik açar.
 - `mergeDictionary`: kullanıcı sözlüğünü (kelime/karşılık) tek-kelimelik öbek

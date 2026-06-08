@@ -19,6 +19,7 @@ import {
   detokenize,
 } from "./engine.js";
 import { stemTokens } from "./morph.js";
+import { segmentTokens, glueTokens } from "./turkmorph.js";
 import { buildPhraseTrie, phraseOptionsAt } from "./trie.js";
 
 // ---- 1) Tek yönlü IBM-1 hizalaması ----
@@ -172,11 +173,18 @@ export function buildPhraseModel(parallel, opts = {}) {
   const maxLen = opts.maxPhrase || 4;
   const minCount = opts.minCount || 1;   // büyük veride 2-3 yapın
   const maxCand = opts.maxCand || 20;    // kaynak öbek başına aday sayısı
+  // Morfolojik segmentasyon (opt-in): Türkçe yüzey biçimi kök + soyut ek
+  // etiketlerine ayrılır; model ekleri bağımsız öğrenir, çıktıda glueTokens ile
+  // ünlü uyumlu yüzey biçim sentezlenir. segmentTokens kayıpsız round-trip
+  // garantili olduğundan çıktıyı bozmaz. (Bkz. turkmorph.js)
+  const segment = !!opts.segment;
 
   // Tokenize
   const pairs = [], tgtTok = [];
   for (const { src, tgt } of parallel) {
-    const e = tokenize(src, srcLang), f = tokenize(tgt, "tr");
+    const e = tokenize(src, srcLang);
+    let f = tokenize(tgt, "tr");
+    if (segment) f = segmentTokens(f);
     // Aşırı uzun çiftleri ele (hizalama hatası olabilir; IBM-1'i O(|e|×|f|)
     // patlatıp eğitimi kilitler). Gerçek cümleler < ~120 jeton.
     if (e.length && f.length && e.length <= MAX_SENT_LEN && f.length <= MAX_SENT_LEN) {
@@ -187,7 +195,9 @@ export function buildPhraseModel(parallel, opts = {}) {
   // Hizalama için (opt-in) köke indirgeme: çekimli biçimleri birleştirip
   // veri kıtlığını azaltır. Token sayısı değişmediğinden konumlar korunur;
   // öbekler yine YÜZEY biçimden çıkarılır, böylece aşırı-soyma çıktıyı bozmaz.
-  const fa = (f) => (opts.stem ? stemTokens(f) : f);
+  // Segmentasyon açıkken hizalama da segment token'ları üzerindedir (stem'e gerek
+  // yok; ekler zaten ayrı birim).
+  const fa = (f) => (segment ? f : opts.stem ? stemTokens(f) : f);
   const alignPairs = pairs.map(({ e, f }) => ({ e, f: fa(f) }));
 
   // İlerleme: ileri EM %45, geri EM %45, çıkarım+LM %10
@@ -213,7 +223,7 @@ export function buildPhraseModel(parallel, opts = {}) {
   return {
     pcounts: counts, scounts: srcCounts, tcounts: tgtCounts,
     ptable: derivePtable(counts, srcCounts, { minCount, maxCand, tcounts: tgtCounts }),
-    lm, srcLang, maxPhrase: maxLen, minCount, maxCand,
+    lm, srcLang, maxPhrase: maxLen, minCount, maxCand, segmented: segment,
   };
 }
 
@@ -307,6 +317,7 @@ export function mergeModels(models) {
     pcounts: pc, scounts: sc, tcounts: tc,
     ptable: derivePtable(pc, sc, { minCount: 1, maxCand: 20, tcounts: tc }),
     lm, srcLang, maxPhrase, minCount: 1, maxCand: 20,
+    segmented: models[0] ? !!models[0].segmented : false,
   };
 }
 
@@ -470,7 +481,10 @@ export function translatePhrase(model, text, opts = {}) {
   const out = [];
   for (const sent of splitSentences(text)) {
     const e = tokenize(sent, model.srcLang);
-    const dec = reorder ? decodePhraseReorder(e, model, opts) : decodePhrase(e, model, opts);
+    let dec = reorder ? decodePhraseReorder(e, model, opts) : decodePhrase(e, model, opts);
+    // Segmentasyonla eğitilmişse: kök + soyut ek token'larını ünlü uyumlu
+    // yüzey biçime birleştir.
+    if (model.segmented) dec = glueTokens(dec);
     out.push(detokenize(dec));
   }
   return out.join(" ");
@@ -483,6 +497,7 @@ export function serializePhrase(model) {
     maxPhrase: model.maxPhrase,
     minCount: model.minCount || 1,
     maxCand: model.maxCand || 20,
+    segmented: !!model.segmented,
     weights: model.weights || null,
     pcounts: [...model.pcounts].map(([s, m]) => [s, [...m]]),
     scounts: [...model.scounts],
@@ -508,6 +523,7 @@ export function deserializePhrase(json) {
     return {
       srcLang: o.srcLang, maxPhrase: o.maxPhrase,
       minCount: o.minCount || 1, maxCand: o.maxCand || 20,
+      segmented: !!o.segmented,
       weights: o.weights || null,
       pcounts, scounts, tcounts, lm, ptable,
       _trie: buildPhraseTrie(ptable), // ön-kurulum: ilk çeviri gecikmesini önler
