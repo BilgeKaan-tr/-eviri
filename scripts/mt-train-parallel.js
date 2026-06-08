@@ -47,19 +47,29 @@ parallel.forEach((p, i) => chunks[i % N].push(p));
 console.log(`${parallel.length} cümle çifti · ${N} çekirdek · eğitiliyor...`);
 const t0 = Date.now();
 
-function trainChunk(pairs) {
+// Canlı ilerleme: her worker'ın yüzdesini topla, ortalamayı yaz
+const fracs = new Array(N).fill(0);
+let finished = 0;
+function render() {
+  const avg = Math.round(fracs.reduce((a, b) => a + b, 0) / N * 100);
+  process.stdout.write(`\r  eğitiliyor... %${avg}  (${finished}/${N} parça bitti)   `);
+}
+
+function trainChunk(pairs, wi) {
   return new Promise((resolve, reject) => {
     const w = new Worker(new URL("./mt-train-worker.mjs", import.meta.url), { type: "module" });
-    w.on("message", (m) => { w.terminate(); m.ok ? resolve(m) : reject(new Error(m.error)); });
+    w.on("message", (m) => {
+      if (m.type === "progress") { fracs[m.wi] = m.frac; render(); return; }
+      w.terminate();
+      if (m.ok) { fracs[wi] = 1; finished++; render(); resolve(m); }
+      else reject(new Error(m.error));
+    });
     w.on("error", reject);
-    w.postMessage({ pairs, opts });
+    w.postMessage({ pairs, opts, wi });
   });
 }
 
-let done = 0;
-const results = await Promise.all(chunks.map((c) =>
-  trainChunk(c).then((r) => { process.stdout.write(`\r  parça ${++done}/${N} bitti`); return r; })
-));
+const results = await Promise.all(chunks.map((c, wi) => trainChunk(c, wi)));
 process.stdout.write("\n");
 
 const merged = mergeModels(results.map((r) => deserializePhrase(r.json)));
