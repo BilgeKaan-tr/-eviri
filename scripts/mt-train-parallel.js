@@ -10,7 +10,7 @@ import zlib from "node:zlib";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Worker } from "node:worker_threads";
-import { deserializePhrase, mergeModels, serializePhrase } from "../src/mt/phrase.js";
+import { deserializePhrase, mergeModels, serializePhrase, prunePhraseModel } from "../src/mt/phrase.js";
 import { alignTexts } from "../src/mt/align.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -23,7 +23,9 @@ const opts = {
   srcLang: arg("--lang", "en"),
   iterations: parseInt(arg("--iter", "15"), 10),
   maxPhrase: parseInt(arg("--maxphrase", "4"), 10),
-  minCount: parseInt(arg("--mincount", "1"), 10),
+  // Büyük korpus için varsayılan budama eşiği 2: tek görülen gürültülü öbekleri
+  // eler → bellek + model boyutu kat kat düşer. Küçük veride --mincount 1 verin.
+  minCount: parseInt(arg("--mincount", "2"), 10),
   stem: has("--stem"),
   segment: has("--segment"), // Türkçe morfolojik segmentasyon (kök+ek)
 };
@@ -73,7 +75,20 @@ function trainChunk(pairs, wi) {
 const results = await Promise.all(chunks.map((c, wi) => trainChunk(c, wi)));
 process.stdout.write("\n");
 
-const merged = mergeModels(results.map((r) => deserializePhrase(r.json)));
+// BELLEK: parçaları TEK TEK oku → birleştir → serbest bırak. Tüm parça modellerini
+// aynı anda bellekte tutmak yerine tepe bellek ~1 model + birikenle sınırlanır.
+// Birleştirme yalnızca sayımları kullandığından countsOnly ile ptable/trie
+// türetilmez (büyük korpusta süre + bellek tasarrufu).
+let merged = null;
+for (const r of results) {
+  const json = zlib.gunzipSync(fs.readFileSync(r.file)).toString("utf8");
+  try { fs.unlinkSync(r.file); } catch {}
+  const m = deserializePhrase(json, { countsOnly: true });
+  merged = merged ? mergeModels([merged, m], { derivePtable: false }) : m;
+}
+// Parçalar arası kalan düşük-sayımlı öbekleri de ele (worker'lar parça düzeyinde
+// eledi; bu, birleşik sayımda hâlâ eşik altı kalanları temizler).
+if (opts.minCount > 1) prunePhraseModel(merged, { minCount: opts.minCount });
 const mjson = serializePhrase(merged);
 let outP = out;
 if (has("--gzip")) { if (!outP.endsWith(".gz")) outP += ".gz"; fs.writeFileSync(outP, zlib.gzipSync(mjson, { level: 9 })); }

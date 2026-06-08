@@ -289,7 +289,7 @@ export function derivePtable(pcounts, scounts, { minCount = 1, maxCand = 20, tco
 
 // Birden çok modeli SAYIM düzeyinde birleştirir (20.000 kitabı parça parça
 // eğitip toplamak için). Öbek sayımları, kaynak sayımları ve LM sayımları toplanır.
-export function mergeModels(models) {
+export function mergeModels(models, opts = {}) {
   const pc = new Map(), sc = new Map(), tc = new Map();
   const uni = new Map(), bi = new Map(), tri = new Map();
   let N = 0, maxPhrase = 1;
@@ -313,12 +313,40 @@ export function mergeModels(models) {
     maxPhrase = Math.max(maxPhrase, m.maxPhrase || 1);
   }
   const lm = { uni, bi, tri, V: uni.size, N };
+  // derivePtable:false -> büyük korpus birleştirmede ptable türetmeyi atla
+  // (tepe bellek/süre). Yükleyici veya prunePhraseModel gerektiğinde türetir.
+  const ptable = opts.derivePtable === false ? undefined : derivePtable(pc, sc, { minCount: 1, maxCand: 20, tcounts: tc });
   return {
-    pcounts: pc, scounts: sc, tcounts: tc,
-    ptable: derivePtable(pc, sc, { minCount: 1, maxCand: 20, tcounts: tc }),
+    pcounts: pc, scounts: sc, tcounts: tc, ptable,
     lm, srcLang, maxPhrase, minCount: 1, maxCand: 20,
     segmented: models[0] ? !!models[0].segmented : false,
   };
+}
+
+// Düşük-sayımlı (gürültülü/tek görülen) öbek çiftlerini eler — BÜYÜK korpuslarda
+// bellek ve dosya boyutu için kritik. minCount altı adaylar pcounts'tan atılır;
+// öksüz kaynak/hedef sayımları temizlenir. φ orijinal toplamlardan (scounts/
+// tcounts) hesaplandığından kalan adayların olasılıkları bozulmaz. ptable yalnızca
+// modelde zaten varsa yeniden türetilir (eğitim sırasında serialize öncesi gereksiz
+// bellek harcamayı önler; yükleyici nasılsa yeniden türetir).
+export function prunePhraseModel(model, { minCount = 2 } = {}) {
+  if (!model || minCount <= 1) return model;
+  const surviving = new Set();
+  for (const [src, mm] of model.pcounts) {
+    for (const [tgt, v] of mm) {
+      if (cOf(v) < minCount) mm.delete(tgt);
+      else surviving.add(tgt);
+    }
+    if (mm.size === 0) { model.pcounts.delete(src); model.scounts.delete(src); }
+  }
+  if (model.tcounts) for (const tgt of model.tcounts.keys()) if (!surviving.has(tgt)) model.tcounts.delete(tgt);
+  if (model.ptable) {
+    model.ptable = derivePtable(model.pcounts, model.scounts, {
+      minCount: 1, maxCand: model.maxCand || 20, tcounts: model.tcounts || null,
+    });
+  }
+  delete model._trie;
+  return model;
 }
 
 // ---- 5) Öbek-tabanlı monoton beam çözücü ----
@@ -508,7 +536,7 @@ export function serializePhrase(model) {
     },
   });
 }
-export function deserializePhrase(json) {
+export function deserializePhrase(json, opts = {}) {
   const o = typeof json === "string" ? JSON.parse(json) : json;
   const lm = {
     uni: new Map(o.lm.uni), bi: new Map(o.lm.bi),
@@ -519,15 +547,18 @@ export function deserializePhrase(json) {
     const pcounts = new Map(o.pcounts.map(([s, m]) => [s, new Map(m)]));
     const scounts = new Map(o.scounts);
     const tcounts = o.tcounts ? new Map(o.tcounts) : null;
-    const ptable = derivePtable(pcounts, scounts, { minCount: o.minCount || 1, maxCand: o.maxCand || 20, tcounts });
-    return {
+    const base = {
       srcLang: o.srcLang, maxPhrase: o.maxPhrase,
       minCount: o.minCount || 1, maxCand: o.maxCand || 20,
-      segmented: !!o.segmented,
-      weights: o.weights || null,
-      pcounts, scounts, tcounts, lm, ptable,
-      _trie: buildPhraseTrie(ptable), // ön-kurulum: ilk çeviri gecikmesini önler
+      segmented: !!o.segmented, weights: o.weights || null,
+      pcounts, scounts, tcounts, lm,
     };
+    // countsOnly: ptable/trie türetmeden döner (birleştirme/budama için; bunlar
+    // yalnızca pcounts/scounts/tcounts/lm kullanır). Büyük korpus birleştirmede
+    // tepe belleği ve süreyi belirgin düşürür.
+    if (opts.countsOnly) return base;
+    const ptable = derivePtable(pcounts, scounts, { minCount: o.minCount || 1, maxCand: o.maxCand || 20, tcounts });
+    return { ...base, ptable, _trie: buildPhraseTrie(ptable) };
   }
   const ptable = new Map(o.ptable.map(([s, m]) => [s, new Map(m)]));
   return { srcLang: o.srcLang, maxPhrase: o.maxPhrase, ptable, lm, _trie: buildPhraseTrie(ptable) };

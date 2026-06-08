@@ -107,6 +107,15 @@ Sıfırdan, bağımsız SMT motoru. Paralel metinden öğrenir, dış bağımlı
   olarak modele katar (bilinmeyen kelime otoritesi); CLI `--dict`, egit.html sözlük yükleme.
 - Model artık SAYIM (count) saklar; `derivePtable` ile φ türetilir; `mergeModels`
   birden çok modeli sayım düzeyinde birleştirir (parça parça eğitip toplama).
+- **Bellek (büyük korpus):** `prunePhraseModel(model,{minCount})` düşük-sayımlı
+  (çoğunlukla tek görülen, gürültülü) öbek çiftlerini eler → bellek + dosya boyutu
+  kat kat düşer. `mt-train-parallel`/`mt-train-stream` varsayılan `--mincount 2`;
+  worker'lar parça düzeyinde budar + sonucu GZIP geçici dosyaya yazar; ana süreç
+  parçaları TEK TEK okuyup `deserializePhrase(...,{countsOnly:true})` +
+  `mergeModels(...,{derivePtable:false})` ile birleştirir (ptable/trie türetmeden)
+  → tepe bellek ~1 model + birikenle sınırlı. Yüz binlerce cümle ~2 GB heap'e sığar.
+  Hâlâ taşarsa: `set NODE_OPTIONS=--max-old-space-size=4096` (Windows) ya da
+  `--mincount 3`, daha küçük `--maxphrase`.
 - Tamamen Node ile test edilebilir (tarayıcı/CDN gerekmez). Yol haritası:
   otomatik cümle hizalama, reordering, tarayıcıya entegrasyon.
 

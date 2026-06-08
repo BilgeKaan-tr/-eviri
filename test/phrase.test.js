@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   buildPhraseModel, translatePhrase, serializePhrase, deserializePhrase,
-  mergeModels, mergeDictionary, derivePtable,
+  mergeModels, mergeDictionary, derivePtable, prunePhraseModel,
 } from "../src/mt/phrase.js";
 
 const sample = [
@@ -51,6 +51,30 @@ test("bilinmeyen kelime: İngilizce lemma yedeği (çoğul -> tekil)", () => {
   const m = buildPhraseModel(par, { iterations: 25, maxPhrase: 2 });
   assert.equal(translatePhrase(m, "books", { reorder: false }), "Kitap");   // book
   assert.equal(translatePhrase(m, "cities", { reorder: false }), "Şehir");  // ies->y
+});
+
+test("prunePhraseModel: düşük-sayımlı öbekleri eler, sık olanı korur", () => {
+  const par = [];
+  for (let i = 0; i < 3; i++) par.push({ src: "the cat", tgt: "kedi" }); // count 3
+  par.push({ src: "the xyz", tgt: "zzz" }); // singleton
+  const m = buildPhraseModel(par, { iterations: 10, maxPhrase: 2 });
+  prunePhraseModel(m, { minCount: 2 });
+  // singleton kaynak elenmeli, sık öbek korunmalı
+  assert.ok(!m.pcounts.has("xyz") && !m.pcounts.has("the xyz"));
+  assert.ok([...m.pcounts.keys()].some((k) => k.includes("cat")));
+  assert.equal(translatePhrase(m, "the cat"), "Kedi");
+});
+
+test("deserializePhrase countsOnly + mergeModels derivePtable:false (bellek-dostu birleştirme)", () => {
+  const a = buildPhraseModel([{ src: "good morning", tgt: "günaydın" }, { src: "good morning", tgt: "günaydın" }], { iterations: 12 });
+  const co = deserializePhrase(serializePhrase(a), { countsOnly: true });
+  assert.equal(co.ptable, undefined, "countsOnly ptable türetmemeli");
+  assert.ok(co.pcounts.size > 0);
+  const merged = mergeModels([co, co], { derivePtable: false });
+  assert.equal(merged.ptable, undefined, "derivePtable:false ptable türetmemeli");
+  // serialize→tam deserialize sonrası çeviri çalışmalı (ptable yüklemede türetilir)
+  const r = deserializePhrase(serializePhrase(merged));
+  assert.equal(translatePhrase(r, "good morning"), "Günaydın");
 });
 
 test("boş korpus / boş girdi çökmemeli", () => {
