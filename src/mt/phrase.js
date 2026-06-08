@@ -351,12 +351,26 @@ export function decodePhraseReorder(eTokens, model, opts = {}) {
   } = opts;
   const n = eTokens.length;
   if (n === 0) return opts.returnScore ? { seq: [], score: 0 } : [];
-  // Uzun cümle: 30-bit maske sınırı. ~26'lık pencerelere bölüp her birini
-  // yeniden sıralayarak çöz (yerel reordering korunur), sonuçları birleştir.
+  // Uzun cümle: 30-bit maske sınırı. Sabit pencere yerine NOKTALAMA / yan-cümle
+  // sınırında böl: böylece SOV yeniden sıralaması bir cümle parçasının ortasından
+  // kesilmez (Türkçe'de fiil sona gider; keyfi kesim çıktıyı bozardı). Sınır
+  // bulunamazsa en fazla 26 jetonluk pencereye düşülür (maske sınırını korur).
   if (n > 30) {
     const W = 26, seq = [];
     const sub = { ...opts, returnScore: false };
-    for (let s = 0; s < n; s += W) seq.push(...decodePhraseReorder(eTokens.slice(s, s + W), model, sub));
+    let s = 0;
+    while (s < n) {
+      let end = Math.min(s + W, n);
+      if (end < n) {
+        // [s+5, end) arasında en sağdaki cümle/yan-cümle sınırını ara
+        for (let k = end - 1; k > s + 5; k--) {
+          const tk = eTokens[k];
+          if (tk === "," || tk === ";" || tk === ":" || /[.!?]$/.test(tk)) { end = k + 1; break; }
+        }
+      }
+      seq.push(...decodePhraseReorder(eTokens.slice(s, end), model, sub));
+      s = end;
+    }
     return opts.returnScore ? { seq, score: 0 } : seq;
   }
   const full = (1 << n) - 1;
