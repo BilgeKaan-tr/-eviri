@@ -5,7 +5,7 @@ PDF dosyalarını **Türkçe'ye** çeviren, **tamamen bağımsız ve çevrimdı�
 çevrilir ve **Türkçe karakter destekli** (DejaVu Sans gömülü), başlık/paragraf
 düzenini koruyan yeni bir PDF üretilir.
 
-**Dört kullanım yolu** (detaylar: [`KULLANIM.md`](KULLANIM.md)):
+**Yeni başlıyorsanız → [KURULUM.md](KURULUM.md) (sıfırdan adım adım).**  Dört kullanım yolu (detay: [KULLANIM.md](KULLANIM.md)):
 
 | Araç | Açıklama | Bağımlılık |
 |---|---|---|
