@@ -59,6 +59,30 @@ test("boş korpus / boş girdi çökmemeli", () => {
   assert.equal(translatePhrase(m, ""), "");
 });
 
+test("ters yön özellikleri: ptable 4'lü vektör + tcounts round-trip", () => {
+  const par = [
+    { src: "the cat is black", tgt: "kedi siyah" },
+    { src: "the dog is white", tgt: "köpek beyaz" },
+    { src: "the cat is white", tgt: "kedi beyaz" },
+  ];
+  const m = buildPhraseModel(par, { iterations: 20, maxPhrase: 3 });
+  assert.ok(m.tcounts && m.tcounts.size > 0, "tcounts üretilmeli");
+  // herhangi bir aday [φfe, lexFE, φef, lexEF] (4 alan) içermeli
+  const anyVal = [...[...m.ptable.values()][0].values()][0];
+  assert.equal(anyVal.length, 4, "ptable değeri 4 alanlı olmalı");
+  // serialize/deserialize tcounts'u korur ve çeviri değişmez
+  const r = deserializePhrase(serializePhrase(m));
+  assert.ok(r.tcounts && r.tcounts.size === m.tcounts.size);
+  assert.equal(translatePhrase(r, "the cat is black"), translatePhrase(m, "the cat is black"));
+});
+
+test("derivePtable: tcounts yoksa 2'li (geriye dönük) vektör üretir", () => {
+  const pc = new Map([["x", new Map([["a", [2, 0.5]]])]]);
+  const sc = new Map([["x", 2]]);
+  const pt = derivePtable(pc, sc, {}); // tcounts yok
+  assert.equal(pt.get("x").get("a").length, 2);
+});
+
 test("derivePtable: minCount nadir öbeği eler", () => {
   const pc = new Map([["x", new Map([["a", [1, 1]], ["b", [3, 1]]])]]);
   const sc = new Map([["x", 4]]);

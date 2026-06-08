@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { alignTexts, alignTextsRefine } from "../src/mt/align.js";
 import { buildPhraseModel } from "../src/mt/phrase.js";
-import { corpusBleu, evaluate, tuneWeights } from "../src/mt/tune.js";
+import { corpusBleu, chrf, evaluate, tuneWeights } from "../src/mt/tune.js";
 import { tokenize } from "../src/mt/engine.js";
 
 const en = "The sun rose over the hills. It was a beautiful morning and the birds were singing loudly everywhere. The old man walked slowly to the market.";
@@ -26,6 +26,19 @@ test("corpusBleu: aynı metinde ~1.0", () => {
   const c = [tokenize("kedi siyah", "tr")];
   const r = [tokenize("kedi siyah", "tr")];
   assert.ok(corpusBleu(c, r) > 0.9);
+});
+
+test("chrf: aynı=1, kök-aynı/ek-farklı kısmi kredi, alakasız=0", () => {
+  assert.ok(chrf(["kediyi gördüm"], ["kediyi gördüm"]) > 0.99);
+  const partial = chrf(["kediler"], ["kedileri"]);
+  assert.ok(partial > 0.5 && partial < 1, "ortak kök kısmi kredi almalı");
+  assert.equal(chrf(["merhaba"], ["xyz"]), 0);
+});
+
+test("evaluate: chrf metriği de skor üretir", () => {
+  const m = buildPhraseModel([{ src: "good morning", tgt: "günaydın" }], { iterations: 15 });
+  const s = evaluate(m, [{ src: "good morning", tgt: "günaydın" }], {}, "chrf");
+  assert.ok(s >= 0 && s <= 1);
 });
 
 test("tuneWeights: BLEU'yu düşürmez (ON >= başlangıç)", () => {
