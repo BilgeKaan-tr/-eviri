@@ -35,14 +35,14 @@ function getClient() {
  * @param {string} text
  * @returns {Promise<string>}
  */
-export async function translateText(text) {
+export async function translateText(text, model = MODEL) {
   if (!text || !text.trim()) return "";
   const chunks = splitText(text, MAX_CHARS);
   const results = [];
   for (const chunk of chunks) {
     // Kısmi başarı: bir parça başarısız olursa orijinalini koru, sayfayı kurtar
     try {
-      results.push(await translateChunk(chunk));
+      results.push(await translateChunk(chunk, model));
     } catch (e) {
       console.error(`[translate] parça hatası, orijinal korunuyor: ${e.message}`);
       results.push(chunk);
@@ -51,10 +51,10 @@ export async function translateText(text) {
   return results.join("\n");
 }
 
-async function translateChunk(text, attempt = 0) {
+async function translateChunk(text, model = MODEL, attempt = 0) {
   try {
     const msg = await getClient().messages.create({
-      model: MODEL,
+      model,
       max_tokens: 8192,
       system: SYSTEM_PROMPT,
       messages: [
@@ -75,7 +75,7 @@ async function translateChunk(text, attempt = 0) {
     if ((status === 429 || status === 529 || status >= 500) && attempt < 4) {
       const wait = Math.pow(2, attempt) * 1000;
       await new Promise((r) => setTimeout(r, wait));
-      return translateChunk(text, attempt + 1);
+      return translateChunk(text, model, attempt + 1);
     }
     throw err;
   }

@@ -13,6 +13,16 @@
         <p class="subtitle">PDF dosyanızı yükleyin, tamamını Türkçe'ye çevirelim.</p>
       </header>
 
+      <div class="status" style="margin-bottom:16px;text-align:left;padding:14px 18px">
+        <label style="font-size:13px;color:var(--muted)">Model (kalite/hız):
+          <select id="model" style="margin-left:8px;background:#232733;border:1px solid var(--border);color:var(--text);padding:6px 8px;border-radius:8px">
+            <option value="claude-sonnet-4-6">Sonnet — Denge (önerilen)</option>
+            <option value="claude-opus-4-8">Opus — En yüksek kalite</option>
+            <option value="claude-haiku-4-5-20251001">Haiku — Hızlı/ucuz</option>
+          </select>
+        </label>
+      </div>
+
       <section id="dropzone" class="dropzone">
         <input type="file" id="fileInput" accept="application/pdf" hidden />
         <div class="dz-inner">
@@ -33,6 +43,7 @@
           <div id="progressFill" class="progress-fill"></div>
         </div>
         <p id="progressText" class="progress-text">Hazırlanıyor...</p>
+        <button type="button" id="cancelBtn" class="btn btn-ghost" style="margin-top:14px">İptal Et</button>
       </section>
 
       <section id="result" class="result hidden">
@@ -50,6 +61,7 @@
 
       <footer>
         <p>Claude API ile güçlendirilmiştir · Türkçe karakter destekli</p>
+        <p style="font-size:11px;margin-top:6px">🔒 Gizlilik: dosyanız yalnızca çeviri için işlenir, indirildikten ~60 sn sonra sunucu belleğinden silinir; kalıcı olarak saklanmaz.</p>
       </footer>
     </main>
 

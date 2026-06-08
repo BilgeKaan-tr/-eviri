@@ -16,6 +16,16 @@ const downloadLink = document.getElementById("downloadLink");
 const resetBtn = document.getElementById("resetBtn");
 const errorResetBtn = document.getElementById("errorResetBtn");
 const errorText = document.getElementById("errorText");
+const cancelBtn = document.getElementById("cancelBtn");
+const modelSel = document.getElementById("model");
+
+let currentJobId = null;
+cancelBtn.addEventListener("click", async () => {
+  if (!currentJobId) return;
+  cancelBtn.disabled = true;
+  progressText.textContent = "İptal ediliyor...";
+  try { await fetch(`/api/cancel/${currentJobId}`, { method: "POST" }); } catch {}
+});
 
 // --- Dosya secimi ---
 browseBtn.addEventListener("click", () => fileInput.click());
@@ -76,15 +86,19 @@ async function handleFile(file) {
   progressText.textContent = "Dosya yükleniyor...";
   show(statusEl);
 
+  cancelBtn.disabled = false;
   try {
     const form = new FormData();
     form.append("file", file);
+    if (modelSel) form.append("model", modelSel.value);
     const res = await fetch("/api/upload", { method: "POST", body: form });
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
       throw new Error(data.error || "Yükleme başarısız.");
     }
     const { jobId } = await res.json();
+    currentJobId = jobId;
+    sessionStorage.setItem("jobId", jobId); // sayfa yenilenince yeniden bağlan
     listenProgress(jobId);
   } catch (err) {
     fail(err.message);
@@ -104,20 +118,23 @@ function listenProgress(jobId) {
         progressText.textContent = "Çeviri başlıyor...";
         break;
       case "progress": {
-        const pct = Math.round(((ev.page - 1) / ev.total) * 100);
+        // Karakter-ağırlıklı pct (varsa) daha doğru; yoksa sayfa oranı
+        const pct = ev.pct != null ? ev.pct : Math.round(((ev.page - 1) / ev.total) * 100);
         progressFill.style.width = pct + "%";
-        phaseLabel.textContent = `${ev.page} / ${ev.total} sayfa`;
-        progressText.textContent = `${ev.page}. sayfa çevriliyor...`;
+        phaseLabel.textContent = `${ev.page} / ${ev.total} sayfa · %${pct}`;
+        progressText.textContent = `Çevriliyor... (${ev.page}/${ev.total})`;
         break;
       }
       case "done":
         progressFill.style.width = "100%";
         es.close();
+        sessionStorage.removeItem("jobId");
         downloadLink.href = `/api/download/${jobId}`;
         show(resultEl);
         break;
       case "error":
         es.close();
+        sessionStorage.removeItem("jobId");
         fail(ev.message || "Çeviri sırasında hata oluştu.");
         break;
     }
@@ -128,4 +145,14 @@ function listenProgress(jobId) {
     if (!resultEl.classList.contains("hidden")) return;
     if (errorEl.classList.contains("hidden") && statusEl.classList.contains("hidden")) return;
   };
+}
+
+// Sayfa yenilenince devam eden işe yeniden bağlan
+const pending = sessionStorage.getItem("jobId");
+if (pending) {
+  fetch(`/api/download/${pending}`, { method: "HEAD" }).catch(() => {});
+  currentJobId = pending;
+  progressText.textContent = "Devam eden işe bağlanılıyor...";
+  show(statusEl);
+  listenProgress(pending);
 }
