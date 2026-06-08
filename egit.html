@@ -103,6 +103,7 @@
   </section>
   <section id="result" class="result hidden">
     <div class="result-icon">✅</div><p class="result-text">Çeviri tamamlandı!</p>
+    <p id="qaNote" style="color:var(--err);font-size:13px;margin-bottom:12px"></p>
     <a id="downloadLink" class="btn btn-primary" download>Çevrilmiş PDF'i İndir</a>
     <button type="button" id="resetBtn" class="btn btn-ghost">Yeni Dosya</button>
   </section>
@@ -355,6 +356,17 @@ errorResetBtn.addEventListener("click", () => show(dropzone));
 let cancelRequested = false;
 $("cancelBtn").addEventListener("click", () => { cancelRequested = true; progressText.textContent = "İptal ediliyor..."; });
 
+function qaCount(src, tgt, sAcc, pAcc){
+  const tgtSet = new Set((tgt.toLowerCase().match(/[a-zçğıöşü]+/g) || []));
+  for (const w of (src.toLowerCase().match(/[a-z]+/g) || [])) { if (w.length < 3) continue; sAcc++; if (tgtSet.has(w)) pAcc++; }
+  return [sAcc, pAcc];
+}
+function showQa(sAcc, pAcc){
+  const note = $("qaNote"); if (!note) return;
+  if (sAcc < 20) { note.textContent = ""; return; }
+  note.textContent = (1 - pAcc / sAcc) < 0.55
+    ? "⚠️ Düşük kapsama: çok sayıda kelime çevrilemedi. Daha çok kitapla eğitin veya sözlük ekleyin." : "";
+}
 async function handleFile(file){
   if (file.type !== "application/pdf") return fail("Lütfen bir PDF seçin.");
   if (!model) return fail("Önce model eğitin/yükleyin.");
@@ -365,7 +377,7 @@ async function handleFile(file){
   fileName.textContent = file.name; progressFill.style.width = "0%"; progressText.textContent = "PDF okunuyor..."; show(statusEl);
   try {
     const pages = await extractPdf(new Uint8Array(await file.arrayBuffer()));
-    const outPages = [];
+    const outPages = []; let qaSrc = 0, qaPass = 0;
     for (let i = 0; i < pages.length; i++) {
       if (cancelRequested) { show(dropzone); return; }
       progressFill.style.width = Math.round(i / pages.length * 100) + "%";
@@ -374,6 +386,7 @@ async function handleFile(file){
       const blocks = [];
       for (const b of pages[i].blocks) {
         const t = tr(b.text);
+        [qaSrc, qaPass] = qaCount(b.text, t, qaSrc, qaPass);
         if (bilingual) { blocks.push({ text: b.text, heading: b.heading, scale: b.scale }); blocks.push({ text: t, heading: false, scale: b.scale }); }
         else blocks.push({ text: t, heading: b.heading, scale: b.scale });
       }
@@ -384,6 +397,7 @@ async function handleFile(file){
     const out = await buildPdf(outPages);
     downloadLink.href = URL.createObjectURL(new Blob([out], { type: "application/pdf" }));
     downloadLink.download = file.name.replace(/\.pdf$/i, "") + "-turkce.pdf";
+    showQa(qaSrc, qaPass);
     progressFill.style.width = "100%"; show(resultEl);
   } catch (err) { console.error(err); fail(err.message || "Çeviri hatası."); }
 }

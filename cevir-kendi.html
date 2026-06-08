@@ -77,6 +77,7 @@
 
   <section id="result" class="result hidden">
     <div class="result-icon">✅</div><p class="result-text">Çeviri tamamlandı!</p>
+    <p id="qaNote" style="color:var(--err);font-size:13px;margin-bottom:12px"></p>
     <a id="downloadLink" class="btn btn-primary" download>Çevrilmiş PDF'i İndir</a>
     <button type="button" id="resetBtn" class="btn btn-ghost">Yeni Dosya</button>
   </section>
@@ -342,6 +343,19 @@ errorResetBtn.addEventListener("click", reset);
 let cancelRequested=false;
 document.getElementById("cancelBtn").addEventListener("click",()=>{ cancelRequested=true; progressText.textContent="İptal ediliyor..."; });
 
+// Kapsama (QA): çevrilmeden kalan kaynak kelime oranını tahmin et
+function qaCount(src, tgt, sAcc, pAcc){
+  const tgtSet=new Set((tgt.toLowerCase().match(/[a-zçğıöşü]+/g)||[]));
+  for(const w of (src.toLowerCase().match(/[a-z]+/g)||[])){ if(w.length<3) continue; sAcc++; if(tgtSet.has(w)) pAcc++; }
+  return [sAcc,pAcc];
+}
+function showQa(sAcc, pAcc){
+  const note=document.getElementById("qaNote"); if(!note) return;
+  if(sAcc<20){ note.textContent=""; return; }
+  const cov=1-pAcc/sAcc;
+  if(cov<0.55) note.textContent="⚠️ Düşük kapsama: çok sayıda kelime çevrilemedi. Modeli daha çok kitapla eğitin veya sözlük ekleyin.";
+  else note.textContent="";
+}
 async function handleFile(file){
   if(file.type!=="application/pdf") return fail("Lütfen bir PDF dosyası seçin.");
   if(!model) return fail("Önce model.json yükleyin.");
@@ -354,7 +368,7 @@ async function handleFile(file){
   try{
     const buf=new Uint8Array(await file.arrayBuffer());
     const pages=await extractPdf(buf);
-    const translated=[];
+    const translated=[]; let qaSrc=0, qaPass=0;
     for(let i=0;i<pages.length;i++){
       if(cancelRequested){ reset(); return; }
       progressFill.style.width=Math.round(i/pages.length*100)+"%";
@@ -364,6 +378,7 @@ async function handleFile(file){
       const blocks=[];
       for(const b of pages[i].blocks){
         const t=tr(b.text);
+        [qaSrc,qaPass]=qaCount(b.text,t,qaSrc,qaPass);
         if(bilingual){ blocks.push({text:b.text,heading:b.heading,scale:b.scale}); blocks.push({text:t,heading:false,scale:b.scale}); }
         else blocks.push({text:t,heading:b.heading,scale:b.scale});
       }
@@ -375,6 +390,7 @@ async function handleFile(file){
     const blob=new Blob([out],{type:"application/pdf"});
     downloadLink.href=URL.createObjectURL(blob);
     downloadLink.download=file.name.replace(/\.pdf$/i,"")+"-turkce.pdf";
+    showQa(qaSrc, qaPass);
     progressFill.style.width="100%"; show(resultEl);
   }catch(err){ console.error(err); fail(err.message||"Çeviri sırasında bir hata oluştu."); }
 }
