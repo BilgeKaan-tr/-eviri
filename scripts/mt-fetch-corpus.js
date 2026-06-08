@@ -11,8 +11,48 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import zlib from "node:zlib";
 import readline from "node:readline";
-import { execFileSync } from "node:child_process";
+import { pipeline } from "node:stream/promises";
+
+// ---- Saf Node ZIP açıcı (dış 'unzip' komutuna gerek yok; Windows dahil) ----
+function readEOCD(fd, size) {
+  const maxScan = Math.min(size, 65557);
+  const buf = Buffer.alloc(maxScan);
+  fs.readSync(fd, buf, 0, maxScan, size - maxScan);
+  for (let i = buf.length - 22; i >= 0; i--) {
+    if (buf.readUInt32LE(i) === 0x06054b50) {
+      return { cdSize: buf.readUInt32LE(i + 12), cdOffset: buf.readUInt32LE(i + 16) };
+    }
+  }
+  throw new Error("ZIP dizini (EOCD) bulunamadı — bozuk indirme olabilir.");
+}
+function readCentralDir(fd, cdOffset, cdSize) {
+  const buf = Buffer.alloc(cdSize);
+  fs.readSync(fd, buf, 0, cdSize, cdOffset);
+  const entries = []; let p = 0;
+  while (p + 46 <= buf.length && buf.readUInt32LE(p) === 0x02014b50) {
+    const method = buf.readUInt16LE(p + 10);
+    const compSize = buf.readUInt32LE(p + 20);
+    const nameLen = buf.readUInt16LE(p + 28);
+    const extraLen = buf.readUInt16LE(p + 30);
+    const commentLen = buf.readUInt16LE(p + 32);
+    const localOffset = buf.readUInt32LE(p + 42);
+    const name = buf.toString("utf8", p + 46, p + 46 + nameLen);
+    entries.push({ name, method, compSize, localOffset });
+    p += 46 + nameLen + extraLen + commentLen;
+  }
+  return entries;
+}
+async function extractEntry(zipPath, fd, entry, outPath) {
+  const lh = Buffer.alloc(30);
+  fs.readSync(fd, lh, 0, 30, entry.localOffset);
+  const dataStart = entry.localOffset + 30 + lh.readUInt16LE(26) + lh.readUInt16LE(28);
+  const src = fs.createReadStream(zipPath, { start: dataStart, end: dataStart + entry.compSize - 1 });
+  const out = fs.createWriteStream(outPath);
+  if (entry.method === 8) await pipeline(src, zlib.createInflateRaw(), out); // deflate
+  else await pipeline(src, out);                                            // stored
+}
 
 // OPUS "moses" zip'leri: içinde <Korpus>.en-tr.en ve .tr paralel dosyaları var
 const CORPORA = {
@@ -51,15 +91,23 @@ fileStream.end();
 await new Promise((r) => fileStream.on("finish", r));
 process.stdout.write("\n");
 
-execFileSync("unzip", ["-o", "-j", zipPath, "-d", tmp], { stdio: "ignore" });
-const files = fs.readdirSync(tmp);
-const enFile = files.find((f) => f.endsWith(".en"));
-const trFile = files.find((f) => f.endsWith(".tr"));
-if (!enFile || !trFile) { console.error("Zip içinde .en/.tr dosyaları bulunamadı."); process.exit(1); }
+// Zip'i saf Node ile aç (.en ve .tr paralel dosyaları)
+const fd = fs.openSync(zipPath, "r");
+const zsize = fs.statSync(zipPath).size;
+const { cdOffset, cdSize } = readEOCD(fd, zsize);
+const entries = readCentralDir(fd, cdOffset, cdSize);
+const enEntry = entries.find((e) => e.name.endsWith(".en"));
+const trEntry = entries.find((e) => e.name.endsWith(".tr"));
+if (!enEntry || !trEntry) { fs.closeSync(fd); console.error("Zip içinde .en/.tr dosyaları bulunamadı."); process.exit(1); }
+const enPath = path.join(tmp, "data.en"), trPath = path.join(tmp, "data.tr");
+console.log("  açılıyor...");
+await extractEntry(zipPath, fd, enEntry, enPath);
+await extractEntry(zipPath, fd, trEntry, trPath);
+fs.closeSync(fd);
 
 // İki paralel dosyayı satır-eşli AKIŞLA oku (büyük dosyalarda bellek dostu)
-const enIt = readline.createInterface({ input: fs.createReadStream(path.join(tmp, enFile), "utf8"), crlfDelay: Infinity })[Symbol.asyncIterator]();
-const trIt = readline.createInterface({ input: fs.createReadStream(path.join(tmp, trFile), "utf8"), crlfDelay: Infinity })[Symbol.asyncIterator]();
+const enIt = readline.createInterface({ input: fs.createReadStream(enPath, "utf8"), crlfDelay: Infinity })[Symbol.asyncIterator]();
+const trIt = readline.createInterface({ input: fs.createReadStream(trPath, "utf8"), crlfDelay: Infinity })[Symbol.asyncIterator]();
 const w = fs.createWriteStream(out, "utf8");
 let kept = 0, seen = 0;
 while (true) {
