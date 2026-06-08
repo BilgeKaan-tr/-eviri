@@ -68,6 +68,11 @@ function arg(name, def) { const i = process.argv.indexOf(name); return i >= 0 ? 
 const corpus = arg("--corpus", "tatoeba");
 const out = arg("--out", "korpus.tsv");
 const limit = parseInt(arg("--limit", "0"), 10); // 0 = sınırsız
+// --holdout N: korpusa YAYILMIŞ (her 100'de bir) N çifti ayrı bir dev dosyasına
+// ayırır ve eğitimden ÇIKARIR. Böylece raporlanan BLEU/chrF gerçek görülmemiş
+// veriden gelir (toy dev seti yerine). --dev-out ile yol verilir.
+const holdout = parseInt(arg("--holdout", "0"), 10);
+const devOut = arg("--dev-out", "data/dev.tsv");
 const url = CORPORA[corpus];
 if (!url) {
   console.error(`Hata: bilinmeyen korpus '${corpus}'. Seçenekler: ${Object.keys(CORPORA).join(", ")}`);
@@ -109,7 +114,9 @@ fs.closeSync(fd);
 const enIt = readline.createInterface({ input: fs.createReadStream(enPath, "utf8"), crlfDelay: Infinity })[Symbol.asyncIterator]();
 const trIt = readline.createInterface({ input: fs.createReadStream(trPath, "utf8"), crlfDelay: Infinity })[Symbol.asyncIterator]();
 const w = fs.createWriteStream(out, "utf8");
-let kept = 0, seen = 0;
+let devW = null;
+if (holdout > 0) { fs.mkdirSync(path.dirname(devOut), { recursive: true }); devW = fs.createWriteStream(devOut, "utf8"); }
+let kept = 0, seen = 0, acc = 0, devKept = 0;
 while (true) {
   const a = await enIt.next(), b = await trIt.next();
   if (a.done || b.done) break;
@@ -120,13 +127,18 @@ while (true) {
   if (en.length > 500 || tr.length > 500) continue;            // aşırı uzun satır ele
   const ratio = en.length / Math.max(1, tr.length);
   if (ratio < 0.3 || ratio > 3.5) continue;                    // dengesiz çift ele
+  acc++;
+  // Korpusa yayılmış holdout: her 100. kabul edilen çifti dev'e ayır (eğitimden çıkar)
+  if (devW && devKept < holdout && acc % 100 === 0) { devW.write(en + "\t" + tr + "\n"); devKept++; continue; }
   w.write(en + "\t" + tr + "\n");
   if (++kept % 50000 === 0) process.stdout.write(`\r  ${kept} çift yazıldı`);
   if (limit && kept >= limit) break;
 }
 w.end();
 await new Promise((r) => w.on("finish", r));
+if (devW) { devW.end(); await new Promise((r) => devW.on("finish", r)); }
 fs.rmSync(tmp, { recursive: true, force: true });
 process.stdout.write("\n");
 console.log(`✓ ${kept} cümle çifti -> ${out}  (${seen} satır tarandı)`);
+if (devW) console.log(`✓ ${devKept} doğrulama çifti -> ${devOut} (eğitimden ayrıldı)`);
 console.log(`Şimdi eğit:\n  node scripts/mt-train-parallel.js --tsv ${out} --out model.json --workers ${os.cpus().length} --stem --gzip`);
