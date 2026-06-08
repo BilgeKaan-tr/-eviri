@@ -21,7 +21,7 @@ export async function extractPdf(buffer, opts = {}) {
     const page = await doc.getPage(i);
     const viewport = page.getViewport({ scale: 1 });
     const content = await page.getTextContent();
-    pages.push({ width: viewport.width, height: viewport.height, blocks: itemsToBlocks(content.items) });
+    pages.push({ width: viewport.width, height: viewport.height, blocks: itemsToBlocks(content.items, viewport.width) });
     page.cleanup();
   }
   await doc.destroy();
@@ -30,9 +30,36 @@ export async function extractPdf(buffer, opts = {}) {
 
 const median = (a) => { if (!a.length) return 0; const s = [...a].sort((x, y) => x - y); return s[Math.floor(s.length / 2)]; };
 
+// Çok sütunlu düzen tespiti: iki sütunlu (akademik) PDF'lerde pdf.js parçaları
+// satır satır iki sütun arasında gidip gelir; sadece Y boşluğuna bakan blok
+// mantığı bu metni iç içe geçirir (anlamsız çıktı). Burada parçalar sayfa
+// ortasına göre SOL/SAĞ sütuna ayrılır ve sütunlar ardışık sıralanır (önce
+// tüm sol sütun, sonra sağ). Tek sütunda pdf.js'in doğal sırası korunur.
+export function orderByColumns(items, pageWidth) {
+  const its = items.filter((it) => typeof it.str === "string" && it.transform);
+  if (its.length < 4 || !pageWidth) return its;
+  const mid = pageWidth / 2;
+  let left = 0, right = 0, cross = 0;
+  for (const it of its) {
+    const x0 = it.transform[4], x1 = x0 + (it.width || 0);
+    if (x1 <= mid) left++;
+    else if (x0 >= mid) right++;
+    else cross++; // orta çizgiyi geçen parça (tek sütun/başlık göstergesi)
+  }
+  const total = its.length;
+  // İki sütun kabulü: her iki yanda yeterli metin VE ortayı geçen parça az
+  const twoCol = left > total * 0.25 && right > total * 0.25 && cross < total * 0.15;
+  if (!twoCol) return its;
+  // Merkezi orta çizginin solunda olan parçalar sol sütun. filter sırayı korur,
+  // böylece her sütun içinde pdf.js'in doğal okuma sırası bozulmaz.
+  const isLeft = (it) => it.transform[4] + (it.width || 0) / 2 < mid;
+  return its.filter(isLeft).concat(its.filter((it) => !isLeft(it)));
+}
+
 // pdf.js metin parcalarini paragraf bloklarina ayirir; her bloga temsili font
 // boyutu/olcek ve baslik bayragi atar. Tire ile bolunen kelimeler birlestirilir.
-function itemsToBlocks(items) {
+function itemsToBlocks(items, pageWidth) {
+  items = orderByColumns(items, pageWidth);
   const blocks = [];
   let cur = null, lastY = null;
   for (const it of items) {
