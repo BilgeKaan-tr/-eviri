@@ -108,6 +108,13 @@ metni otomatik hizalar; 1-1, 1-2, 2-1, 2-2 eşleşmelerini bulur. `src/mt/align.
 **Veri biçimi:** `--tsv` ile her satır `kaynak<TAB>türkçe`; veya `--src en.txt
 --tgt tr.txt` ile satır satır hizalı iki dosya.
 
+**Gerçek kalite için (önemli):** 2 kitap çok azdır. Ücretsiz büyük EN-TR korpus indirip eğitin:
+```bash
+node scripts/mt-fetch-corpus.js --corpus ted --out korpus.tsv
+node scripts/mt-train-parallel.js --tsv korpus.tsv --out model.json --workers 8 --stem --gzip
+```
+Korpuslar: tatoeba/ted/qed/wikimatrix/opensubtitles/ccmatrix (OPUS). Detay: KULLANIM.md.
+
 **Ölçekleme (2000+ kitap):** Veri arttıkça kalite belirgin yükselir. Çok büyük
 veride `--mincount 2` (veya 3) verip belleği/dosya boyutunu kontrol edin. Saf JS
 eğitim tek çekirdektir; milyonlarca cümlede eğitim uzun sürebilir.

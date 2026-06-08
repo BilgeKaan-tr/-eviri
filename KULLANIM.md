@@ -9,13 +9,51 @@ Bu depo, PDF'leri Türkçe'ye çeviren birkaç araç içerir. **Hangisini kullan
 | Hazır, **yüksek kaliteli** çeviri (telefonda da) | **`cevir.html`** (Meta NLLB) | Bir kez ~300-600 MB model iner |
 | **En yüksek** kalite | Node sunucu (Claude API) | Anthropic kredisi (ücretli) |
 
-> Soru: "İngilizce ve Türkçe kitap atmam yeterli mi?" — **Evet.** İki düz `.txt`
-> dosyası (biri İngilizce kitap, biri onun Türkçe çevirisi) yükleyin; sistem
-> cümleleri otomatik hizalayıp eğitir. Ne kadar çok kitap, o kadar iyi.
+> Soru: "İngilizce ve Türkçe kitap atmam yeterli mi?" — **Kısmen.** Sistem
+> cümleleri otomatik hizalar ve eğitir; **AMA 2 kitap bir istatistiksel motor
+> için ÇOK AZDIR** — çıktının çoğu çevrilmeden kalır. Gerçek kalite için
+> **on binlerce–milyonlarca cümle** gerekir. Aşağıdaki "Gerçek kalite" bölümüne bakın.
 
 ---
 
-## 🚀 Ana yol: Kendi motorunuzu eğitin — `egit.html`
+## 🎯 GERÇEK KALİTE İÇİN: 2 kitap değil, büyük korpus
+
+İstatistiksel çeviri **veri ister**. Test edilmiş gerçek:
+**10 cümle → çöp · 2.000 cümle → %100 kapsama · 100.000+ cümle → kullanışlı çeviri.**
+
+Ücretsiz, hazır EN-TR paralel külliyatı **tek komutla** indirip eğitin:
+
+```bash
+# 1) Ücretsiz korpus indir (OPUS — opus.nlpl.eu). Küçükten büyüğe:
+node scripts/mt-fetch-corpus.js --corpus tatoeba --out korpus.tsv          # küçük, temiz
+node scripts/mt-fetch-corpus.js --corpus ted --out korpus.tsv             # orta (TED konuşmaları)
+node scripts/mt-fetch-corpus.js --corpus opensubtitles --out korpus.tsv --limit 500000  # büyük
+
+# 2) Çok çekirdekli eğit (büyük veride --gzip + --stem önerilir)
+node scripts/mt-train-parallel.js --tsv korpus.tsv --out model.json --workers 8 --stem --gzip
+#    Çok büyükse (milyonlarca cümle) bellek-dostu akışlı eğitim:
+node scripts/mt-train-stream.js --tsv korpus.tsv --out model.json --batch 50000 --stem --gzip
+
+# 3) (İsteğe bağlı) Kendi kitaplarını da KAT (alan uyarlaması)
+node scripts/mt-align.js --src kitabim-en.txt --tgt kitabim-tr.txt --out kitabim.tsv
+node scripts/mt-train.js --tsv kitabim.tsv --out kitabim.json
+node scripts/mt-merge.js --out model.json korpus.json kitabim.json
+
+# 4) Kaliteyi ölç
+node scripts/mt-eval.js --model model.json.gz --dev data/dev-ornek.tsv
+```
+
+Sonra **`cevir-kendi.html`** (veya `egit.html` → "Hazır model yükle") ile
+`model.json.gz`'i yükleyip PDF çevirin. Korpuslar: `tatoeba`, `ted`, `qed`,
+`wikimatrix`, `opensubtitles`, `ccmatrix`.
+
+> **Not:** Tarayıcıda (`egit.html`) eğitim küçük-orta veri içindir. **Büyük korpus
+> için CLI** (yukarıdaki adımlar) kullanın; sonucu tarayıcıda yükleyin. Motor artık
+> binlerce cümlelik kitapları saniyeler içinde (bantlı hizalama) işler.
+
+---
+
+## 🚀 Tarayıcıda hızlı yol — `egit.html` (küçük-orta veri)
 
 ### 1. Hazırlık
 - `egit.html` ve `font-data.js` **aynı klasörde** olsun.
