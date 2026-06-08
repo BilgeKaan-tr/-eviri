@@ -198,6 +198,24 @@ sürükleyip bırakın, çeviri bittiğinde indirme bağlantısı belirir.
 | PDF üretme | `src/build.js` | `pdf-lib` + gömülü DejaVu Sans, otomatik satır sarma |
 | Sunucu / UI | `server.js`, `public/` | Yükleme, SSE ilerleme, indirme |
 
+
+## 📊 Rakip karşılaştırması ve bilinen sınırlar
+
+| Özellik | Bu proje | PDFMathTranslate (pdf2zh) | LibreTranslate |
+|---|---|---|---|
+| Motor | Kendi SMT'imiz + NLLB + (ops.) Claude | NMT/LLM (Google/DeepL/OpenAI) | NMT |
+| Tamamen offline & API'siz | ✅ (SMT/NLLB) | Kısmen | ✅ |
+| Kendi verinle eğitim | ✅ (tarayıcıda) | ❌ | ❌ |
+| Düzen koruma | Başlık/paragraf | Sütun/tablo/formül | — |
+| OCR (taranmış PDF) | ❌ | ✅ | — |
+| Dil çifti | →Türkçe (kaynak otomatik, NLLB) | 100+ | 29 |
+| SMT kalite tavanı (BLEU) | ~15–25 | ~35–55 | ~25–40 |
+
+**Dürüst sınırlar:** Kendi SMT motorumuzun kalite tavanı sinir ağlarının altındadır;
+tablo/formül/sütun düzeni ve taranmış (OCR) PDF henüz desteklenmez. Güçlü yanı:
+**tam bağımsızlık, kendi verinle eğitim ve gizlilik.** En yüksek kalite için Claude
+sunucu sürümü (ücretli) kullanılabilir.
+
 ## Notlar
 
 - Çıktı PDF, **okunabilir akış** önceliklidir: orijinal yazı tipleri ve

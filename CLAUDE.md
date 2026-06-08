@@ -30,8 +30,14 @@ ve birim testlerle doğrulanır. Gerçek test kullanıcının cihazında yapıl�
 ## 2) Node.js sunucu sürümü (alternatif, Claude API, ücretli)
 
 `server.js` + `src/` + `public/`. Anthropic Claude API ile en yüksek kalite, ama kredi gerektirir.
-- `src/extract.js` (pdfjs), `src/translate.js` (Claude, chunk + retry), `src/build.js` (pdf-lib).
-- `scripts/download-font.js` DejaVu fontunu indirir. `.env` içinde `ANTHROPIC_API_KEY`.
+- `src/extract.js` (pdfjs, **blok/başlık algılama** + tire-birleştirme + maxPages),
+  `src/translate.js` (Claude, chunk + retry + parça-bazlı kısmi başarı + model param),
+  `src/build.js` (pdf-lib, **başlık=bold/büyük**, font baytları önbellekli).
+- `server.js`: güvenlik başlıkları, IP hız sınırı, MAX_JOBS/MAX_PAGES, %PDF magic-byte,
+  multer hata yakalama, SSE heartbeat, /api/cancel, paralel+önbellekli blok çevirisi,
+  graceful shutdown. `public/`: model seçici, iptal, gizlilik notu, jobId reconnect.
+- `scripts/download-font.js` DejaVu (regular+bold) indirir. `.env` içinde `ANTHROPIC_API_KEY`.
+- Testler: `test/` (node:test, `npm test`), `scripts/check-html.mjs`, GitHub Actions CI.
 
 ## 3) Kendi istatistiksel çeviri motoru — `src/mt/`
 
