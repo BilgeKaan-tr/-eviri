@@ -118,8 +118,7 @@ function splitSentences(text){
     const core=tk.slice(0,tk.length-m[0].length);
     const cl=core.toLowerCase().replace(/[^\p{L}]/gu,"");
     const isAbbr=ABBR.has(cl), isInitial=cl.length===1, isNumber=/\d$/.test(core);
-    const next=toks[i+1], nextCap=!next||/^[\p{Lu}"'(\[“]/u.test(next);
-    if(!isAbbr&&!isInitial&&!isNumber&&nextCap){ out.push(cur); cur=""; }
+    if(!isAbbr&&!isInitial&&!isNumber){ out.push(cur); cur=""; }
   }
   if(cur.trim()) out.push(cur.trim());
   return out;

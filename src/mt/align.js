@@ -46,34 +46,55 @@ const PRIOR = {
  * @param {string[]} tgtSents hedef (Türkçe) cümleler
  * @returns {{si:number,sj:number,ti:number,tj:number}[]} hizalama blokları (indeks aralıkları)
  */
-// Genel DP: blockCost(i,ni,j,nj,type) ile herhangi bir maliyet fonksiyonunu hizalar
-function alignDP(n, m, blockCost) {
-  const D = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(Infinity));
-  const back = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(null));
-  D[0][0] = 0;
-  const moves = [
-    [1, 1, "1-1"], [1, 0, "1-0"], [0, 1, "0-1"],
-    [2, 1, "2-1"], [1, 2, "1-2"], [2, 2, "2-2"],
-  ];
+// Genel DP: blockCost(i,ni,j,nj,type) ile hizalar. BANTLI + tipli dizi:
+// (n×m) dev matris yerine yalnızca köşegen çevresinde dar bir bant hesaplanır;
+// binlerce cümlelik kitaplar saniyeler içinde, bellek MB düzeyinde işlenir.
+const MOVES = [[1, 1, "1-1"], [1, 0, "1-0"], [0, 1, "0-1"], [2, 1, "2-1"], [1, 2, "1-2"], [2, 2, "2-2"]];
+function alignDP(n, m, blockCost, opts = {}) {
+  if (n === 0 || m === 0) return [];
+  const ratio = m / n;
+  const band = opts.band || Math.min(400, Math.max(128, Math.ceil(Math.max(n, m) * 0.01)));
+  const W = 2 * band + 1;
+  // Satır i için bant penceresinin başlangıç sütunu (0..m aralığında tutulur)
+  const off = (i) => Math.max(0, Math.min(Math.max(0, m - (W - 1)), Math.round(i * ratio) - band));
+
+  const D = new Float64Array((n + 1) * W).fill(Infinity);
+  const back = new Uint8Array((n + 1) * W).fill(255); // 255 = ulaşılmadı
+  D[0 * W + (0 - off(0))] = 0;
+
   for (let i = 0; i <= n; i++) {
-    for (let j = 0; j <= m; j++) {
-      if (D[i][j] === Infinity) continue;
-      for (const [di, dj, type] of moves) {
-        const ni = i + di, nj = j + dj;
+    const oi = off(i);
+    for (let loc = 0; loc < W; loc++) {
+      const j = oi + loc;
+      if (j > m) break;
+      const cur = D[i * W + loc];
+      if (cur === Infinity) continue;
+      for (let c = 0; c < MOVES.length; c++) {
+        const ni = i + MOVES[c][0], nj = j + MOVES[c][1];
         if (ni > n || nj > m) continue;
-        const cost = D[i][j] + blockCost(i, ni, j, nj, type);
-        if (cost < D[ni][nj]) { D[ni][nj] = cost; back[ni][nj] = [i, j, type]; }
+        const nloc = nj - off(ni);
+        if (nloc < 0 || nloc >= W) continue; // bant dışı
+        const cost = cur + blockCost(i, ni, j, nj, MOVES[c][2]);
+        const idx = ni * W + nloc;
+        if (cost < D[idx]) { D[idx] = cost; back[idx] = c; }
       }
     }
+  }
+
+  // (n,m) banda sığmadıysa bandı genişletip bir kez daha dene (güvenlik)
+  if (back[n * W + (m - off(n))] === 255 && !opts._retry) {
+    return alignDP(n, m, blockCost, { band: Math.min(Math.max(n, m), band * 4), _retry: true });
   }
 
   // Geri izleme
   const blocks = [];
   let i = n, j = m;
   while (i > 0 || j > 0) {
-    const b = back[i][j];
-    if (!b) break;
-    const [pi, pj] = b;
+    const loc = j - off(i);
+    if (loc < 0 || loc >= W) break;
+    const c = back[i * W + loc];
+    if (c === 255) break;
+    const pi = i - MOVES[c][0], pj = j - MOVES[c][1];
     blocks.push({ si: pi, sj: i, ti: pj, tj: j });
     i = pi; j = pj;
   }
@@ -99,6 +120,9 @@ export function alignTextsRefine(srcText, tgtText, opts = {}) {
   const srcSents = splitSentences(srcText), tgtSents = splitSentences(tgtText);
   const n = srcSents.length, m = tgtSents.length;
   if (!n || !m) return [];
+  // Çok büyük girdide lexical 2. geçiş pahalı; hızlı uzunluk-tabanlı yola düş
+  // (kalite farkı küçük, hız ~15×). Eşik opts.maxRefine ile ayarlanır.
+  if (Math.max(n, m) > (opts.maxRefine || 2500)) return alignTexts(srcText, tgtText);
   const sl = srcSents.map((s) => s.length), tl = tgtSents.map((s) => s.length);
   const sum = (a, x, y) => { let s = 0; for (let k = x; k < y; k++) s += a[k]; return s; };
   const lenCost = (i, ni, j, nj, type) => lengthCost(sum(sl, i, ni), sum(tl, j, nj)) + PRIOR[type];

@@ -139,6 +139,7 @@ function lexWeight(e, fLex, i1, i2, jmin, jmax, pts, t) {
 // ============================================================================
 //  Yüksek seviye: model kur / çevir
 // ============================================================================
+const MAX_SENT_LEN = 250; // aşırı uzun (hatalı hizalanmış) cümleleri ele (hang koruması)
 export function buildPhraseModel(parallel, opts = {}) {
   const srcLang = opts.srcLang || "en";
   const iterations = opts.iterations || 12;
@@ -150,7 +151,11 @@ export function buildPhraseModel(parallel, opts = {}) {
   const pairs = [], tgtTok = [];
   for (const { src, tgt } of parallel) {
     const e = tokenize(src, srcLang), f = tokenize(tgt, "tr");
-    if (e.length && f.length) { pairs.push({ e, f }); tgtTok.push(f); }
+    // Aşırı uzun çiftleri ele (hizalama hatası olabilir; IBM-1'i O(|e|×|f|)
+    // patlatıp eğitimi kilitler). Gerçek cümleler < ~120 jeton.
+    if (e.length && f.length && e.length <= MAX_SENT_LEN && f.length <= MAX_SENT_LEN) {
+      pairs.push({ e, f }); tgtTok.push(f);
+    }
   }
 
   // Hizalama için (opt-in) köke indirgeme: çekimli biçimleri birleştirip

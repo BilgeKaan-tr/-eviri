@@ -42,7 +42,8 @@ ve birim testlerle doğrulanır. Gerçek test kullanıcının cihazında yapıl�
 ## 3) Kendi istatistiksel çeviri motoru — `src/mt/`
 
 Sıfırdan, bağımsız SMT motoru. Paralel metinden öğrenir, dış bağımlılık yok.
-- `src/mt/engine.js` (kelime-tabanlı): tokenize, **IBM Model 1 (EM)** ile
+- `src/mt/engine.js` (kelime-tabanlı): tokenize (kısaltma-duyarlı splitSentences —
+  kısaltma/baş harf/sayı dışında HER ZAMAN böler; dev çift/hang koruması), **IBM Model 1 (EM)** ile
   `t(tgt|src)`, Türkçe trigram dil modeli (interpolasyonlu), NULL-düşürmeli monoton beam çözücü,
   `serialize`/`deserialize`, `buildModel`/`translate`.
 - `src/mt/phrase.js` (öbek-tabanlı, **varsayılan**): iki yönlü IBM-1 →
@@ -61,7 +62,8 @@ Sıfırdan, bağımsız SMT motoru. Paralel metinden öğrenir, dış bağımlı
   yapılır; öbekler yüzey biçimden çıkar (aşırı-soyma çıktıyı bozmaz).
 - `src/mt/trie.js`: önek-ağacı öbek tablosu + **bilinmeyen kelime yedeği**
   (`enLemmas`/`lemmaOptions`: İngilizce çekim eki soyup kökü tabloda arar, φ'ye küçük ceza). Ortak önek paylaşımı + erken-durmalı arama. Çözücüler `model._trie`'yi tembel kurar; `phraseOptionsAt` ile aday alır.
-- `src/mt/align.js`: Gale-Church cümle hizalama + `alignTextsRefine` (iki geçişli:
+- `src/mt/align.js`: **BANTLI** Gale-Church (köşegen bandı + tipli dizi → binlerce
+  cümlelik kitap saniyeler/MB; eski tam matris tarayıcıyı kilitliyordu) + Gale-Church + `alignTextsRefine` (iki geçişli:
   uzunluk → IBM-1 → uzunluk+lexical; gürültülü kitap çiftlerinde daha sağlam).
 - `egit.html`: PDF kitap yükleme (pdf.js metin çıkarma), modeli IndexedDB'de saklama
   (otomatik geri yükleme), refine hizalama ile eğitim.
