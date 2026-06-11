@@ -47,11 +47,13 @@ fs.mkdirSync(path.dirname(bundlePath), { recursive: true });
 fs.writeFileSync(bundlePath, out);
 console.log(`✓ bundle: assets/mt-bundle.js (${Math.round(out.length / 1024)} KB)`);
 
-// egit.html'i şablondan üret (bundle gömülü)
-const tmplPath = path.join(root, "egit.template.html");
-if (fs.existsSync(tmplPath)) {
-  const tmpl = fs.readFileSync(tmplPath, "utf8");
-  const html = tmpl.replace("/*__MT_BUNDLE__*/", () => JSON.stringify(out));
-  fs.writeFileSync(path.join(root, "egit.html"), html);
-  console.log("✓ egit.html üretildi (bundle gömülü)");
+// HTML'leri şablonlardan üret (bundle gömülü). TEK KAYNAK: src/mt.
+//  egit.html        : tarayıcıda eğitim + çeviri
+//  cevir-kendi.html : model yükleyip PDF çevirme
+for (const [tmpl, target] of [["egit.template.html", "egit.html"], ["cevir-kendi.template.html", "cevir-kendi.html"]]) {
+  const tmplPath = path.join(root, tmpl);
+  if (!fs.existsSync(tmplPath)) continue;
+  const html = fs.readFileSync(tmplPath, "utf8").replace("/*__MT_BUNDLE__*/", () => JSON.stringify(out));
+  fs.writeFileSync(path.join(root, target), html);
+  console.log(`✓ ${target} üretildi (bundle gömülü)`);
 }
