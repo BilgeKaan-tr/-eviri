@@ -52,7 +52,10 @@ Sıfırdan, bağımsız SMT motoru. Paralel metinden öğrenir, dış bağımlı
   MEVCUT n-gram sayımlarından türetilir → eski modeller yeniden eğitilmeden yararlanır;
   `lm._kn` ilk çağrıda kurulur; tri<2000'de interpolasyona düşer), NULL-düşürmeli monoton
   beam çözücü, `serialize`/`deserialize`, `buildModel`/`translate`. Öbek çözücüler varsayılan
-  KN kullanır (`opts.kn:false` ile kapatılır).
+  KN kullanır (`opts.kn:false` ile kapatılır). **Çıktı cilası** (yeniden eğitim gerektirmez,
+  varsayılan açık, `opts.polish:false`): `restoreCasing` kaynaktaki Title-case özel isim
+  ("London") / kısaltma ("NASA") olup çeviride olduğu gibi geçen kelimelerin büyük harfini
+  geri getirir; `polishPunct` sarkan/çift noktalamayı temizler (cümle sonu .!? korunur).
 - `src/mt/phrase.js` (öbek-tabanlı, **varsayılan**): iki yönlü IBM-1 →
   grow-diag-final-and birleştirme → tutarlı öbek çıkarımı → **4 özellikli skorlama**
   `[φ(f|e), lex(f|e), φ(e|f), lex(e|f)]` (ileri+ters yön; ters yön "hedefte yaygın

@@ -3,11 +3,31 @@ import assert from "node:assert/strict";
 import {
   tokenize, detokenize, trLower, splitSentences,
   trainIBM1, trainLM, lmScore3, buildModel, translate, serialize, deserialize,
+  restoreCasing, polishPunct,
 } from "../src/mt/engine.js";
 
 test("trLower: Türkçe büyük I/İ", () => {
   assert.equal(trLower("İSTANBUL"), "istanbul");
   assert.equal(trLower("IŞIK"), "ışık");
+});
+
+test("restoreCasing: özel isim/kısaltma büyük harfi geri gelir", () => {
+  // Title-case özel isim (cümle ortasında) olduğu gibi geçince düzeltilir
+  assert.equal(restoreCasing("ben london gördüm", "I saw London", "en"), "ben London gördüm");
+  // Kısaltma cümle başında bile korunur
+  assert.equal(restoreCasing("nasa bir kurum", "NASA is an agency", "en"), "NASA bir kurum");
+  // Cümle başı Title-case (özel isim değil) atlanır, değiştirilmez
+  assert.equal(restoreCasing("bu güzel bir gün", "The day is nice", "en"), "bu güzel bir gün");
+  // Eşleşme yoksa değişmez
+  assert.equal(restoreCasing("kedi siyah", "the black cat", "en"), "kedi siyah");
+});
+
+test("polishPunct: sarkan/çift noktalama temizlenir, cümle sonu korunur", () => {
+  assert.equal(polishPunct("Büyük beyaz köpek ,"), "Büyük beyaz köpek");
+  assert.equal(polishPunct("kedi ,, siyah"), "kedi, siyah");
+  assert.equal(polishPunct(", baştaki virgül"), "baştaki virgül");
+  assert.equal(polishPunct("normal cümle."), "normal cümle.");
+  assert.equal(polishPunct("soru ?"), "soru?");
 });
 
 test("tokenize: sayı/URL/e-posta atomik kalır", () => {

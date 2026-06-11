@@ -18,6 +18,8 @@ import {
   lmScore3,
   lmScoreKN,
   detokenize,
+  restoreCasing,
+  polishPunct,
 } from "./engine.js";
 import { stemTokens } from "./morph.js";
 import { segmentTokens, glueTokens } from "./turkmorph.js";
@@ -509,6 +511,7 @@ export function decodePhraseReorder(eTokens, model, opts = {}) {
 export function translatePhrase(model, text, opts = {}) {
   opts = { ...(model.weights || {}), ...opts }; // modelde saklı ayarlı ağırlıklar
   const reorder = opts.reorder !== false; // varsayılan: yeniden sıralama açık
+  const polish = opts.polish !== false; // varsayılan: çıktı cilası açık
   const out = [];
   for (const sent of splitSentences(text)) {
     const e = tokenize(sent, model.srcLang);
@@ -516,7 +519,12 @@ export function translatePhrase(model, text, opts = {}) {
     // Segmentasyonla eğitilmişse: kök + soyut ek token'larını ünlü uyumlu
     // yüzey biçime birleştir.
     if (model.segmented) dec = glueTokens(dec);
-    out.push(detokenize(dec));
+    let s = detokenize(dec);
+    if (polish) {
+      s = restoreCasing(s, sent, model.srcLang); // özel isim büyük harfini geri getir
+      s = polishPunct(s);                         // sarkan/çift noktalama temizliği
+    }
+    out.push(s);
   }
   return out.join(" ");
 }
