@@ -47,8 +47,12 @@ ve birim testlerle doğrulanır. Gerçek test kullanıcının cihazında yapıl�
 Sıfırdan, bağımsız SMT motoru. Paralel metinden öğrenir, dış bağımlılık yok.
 - `src/mt/engine.js` (kelime-tabanlı): tokenize (kısaltma-duyarlı splitSentences —
   kısaltma/baş harf/sayı dışında HER ZAMAN böler; dev çift/hang koruması), **IBM Model 1 (EM)** ile
-  `t(tgt|src)`, Türkçe trigram dil modeli (interpolasyonlu), NULL-düşürmeli monoton beam çözücü,
-  `serialize`/`deserialize`, `buildModel`/`translate`.
+  `t(tgt|src)`, Türkçe trigram dil modeli (interpolasyonlu `lmScore3` + **interpolasyonlu
+  Kneser-Ney `lmScoreKN`**: mutlak indirim + süreklilik olasılığı; süreklilik sayımları
+  MEVCUT n-gram sayımlarından türetilir → eski modeller yeniden eğitilmeden yararlanır;
+  `lm._kn` ilk çağrıda kurulur; tri<2000'de interpolasyona düşer), NULL-düşürmeli monoton
+  beam çözücü, `serialize`/`deserialize`, `buildModel`/`translate`. Öbek çözücüler varsayılan
+  KN kullanır (`opts.kn:false` ile kapatılır).
 - `src/mt/phrase.js` (öbek-tabanlı, **varsayılan**): iki yönlü IBM-1 →
   grow-diag-final-and birleştirme → tutarlı öbek çıkarımı → **4 özellikli skorlama**
   `[φ(f|e), lex(f|e), φ(e|f), lex(e|f)]` (ileri+ters yön; ters yön "hedefte yaygın

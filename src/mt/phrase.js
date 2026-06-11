@@ -16,6 +16,7 @@ import {
   trainLM,
   lmScore,
   lmScore3,
+  lmScoreKN,
   detokenize,
 } from "./engine.js";
 import { stemTokens } from "./morph.js";
@@ -355,6 +356,7 @@ export function decodePhrase(eTokens, model, opts = {}) {
   // wordBonus: uretilen her hedef kelime icin odul. Dil modelinin negatif
   // log-olasiliklarini dengeler; olmazsa cozucu "hicbir sey uretmeme"yi secer.
   const { beam = 30, lmWeight = 0.7, topK = 8, wordBonus = 2.5, lexWeight = 0.5, invWeight = 0.3, invLexWeight = 0.2 } = opts;
+  const lmFn = opts.kn === false ? lmScore3 : lmScoreKN; // varsayılan: Kneser-Ney
   const n = eTokens.length;
   const trie = model._trie || (model._trie = buildPhraseTrie(ptable));
   const beams = Array.from({ length: n + 1 }, () => []);
@@ -371,7 +373,7 @@ export function decodePhrase(eTokens, model, opts = {}) {
           const words = tgtPhrase === "" ? [] : tgtPhrase.split(" ");
           let h2 = h.h2, h1 = h.h1;
           let sc = h.score + Math.log(cOf(pv)) + lexWeight * Math.log(lexOf(pv)) + invScore(pv, invWeight, invLexWeight);
-          for (const w of words) { sc += lmWeight * lmScore3(lm, h2, h1, w) + wordBonus; h2 = h1; h1 = w; }
+          for (const w of words) { sc += lmWeight * lmFn(lm, h2, h1, w) + wordBonus; h2 = h1; h1 = w; }
           beams[i + len].push({ seq: h.seq.concat(words), h2, h1, score: sc });
         }
       }
@@ -434,6 +436,7 @@ export function decodePhraseReorder(eTokens, model, opts = {}) {
     beam = 50, lmWeight = 0.7, topK = 8, wordBonus = 2.5, lexWeight = 0.5,
     invWeight = 0.3, invLexWeight = 0.2, distortionLimit = 5, distortionWeight = 0.25,
   } = opts;
+  const lmFn = opts.kn === false ? lmScore3 : lmScoreKN; // varsayılan: Kneser-Ney
   const n = eTokens.length;
   if (n === 0) return opts.returnScore ? { seq: [], score: 0 } : [];
   // Uzun cümle: 30-bit maske sınırı. Sabit pencere yerine NOKTALAMA / yan-cümle
@@ -490,7 +493,7 @@ export function decodePhraseReorder(eTokens, model, opts = {}) {
             const words = tgtPhrase === "" ? [] : tgtPhrase.split(" ");
             let h2 = h.h2, h1 = h.h1;
             let sc = h.score + Math.log(cOf(pv)) + lexWeight * Math.log(lexOf(pv)) + invScore(pv, invWeight, invLexWeight) - distortionWeight * Math.abs(i - h.lastEnd);
-            for (const w of words) { sc += lmWeight * lmScore3(lm, h2, h1, w) + wordBonus; h2 = h1; h1 = w; }
+            for (const w of words) { sc += lmWeight * lmFn(lm, h2, h1, w) + wordBonus; h2 = h1; h1 = w; }
             stacks[k + len].push({ cov: h.cov | mask, lastEnd: i + len, h2, h1, seq: h.seq.concat(words), score: sc });
           }
         }

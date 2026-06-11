@@ -77,6 +77,28 @@ test("deserializePhrase countsOnly + mergeModels derivePtable:false (bellek-dost
   assert.equal(translatePhrase(r, "good morning"), "Günaydın");
 });
 
+test("Kneser-Ney: yeterli veride devreye girer, çeviriyi bozmaz", () => {
+  // Eşiği (tri>=2000) aşacak sentetik korpus üret
+  const adj = ["big", "small", "black", "white", "fast", "slow", "new", "old", "nice", "long", "short", "hot", "cold", "clean", "dirty", "blue", "green", "yellow"];
+  const trAdj = ["büyük", "küçük", "siyah", "beyaz", "hızlı", "yavaş", "yeni", "eski", "güzel", "uzun", "kısa", "sıcak", "soğuk", "temiz", "kirli", "mavi", "yeşil", "sarı"];
+  const noun = ["cat", "dog", "house", "car", "bird", "table", "door", "road"];
+  const trNoun = ["kedi", "köpek", "ev", "araba", "kuş", "masa", "kapı", "yol"];
+  const par = [];
+  for (let i = 0; i < adj.length; i++) for (let j = 0; j < adj.length; j++) {
+    if (i === j) continue;
+    for (let n = 0; n < noun.length; n++) {
+      par.push({ src: `the ${adj[i]} ${adj[j]} ${noun[n]}`, tgt: `${trAdj[i]} ${trAdj[j]} ${trNoun[n]}` });
+    }
+  }
+  const m = buildPhraseModel(par, { iterations: 6, maxPhrase: 3 });
+  assert.ok(m.lm.tri.size >= 2000, "yeterli trigram olmalı");
+  // KN açık (varsayılan): çeviri doğru ve KN önbelleği kurulmalı
+  assert.equal(translatePhrase(m, "the big black cat"), "Büyük siyah kedi");
+  assert.ok(m.lm._kn, "KN sürekliik tabloları kurulmalı");
+  // KN kapalı (interpolasyon) da çalışmalı (geriye dönük)
+  assert.equal(translatePhrase(m, "the big black cat", { kn: false }), "Büyük siyah kedi");
+});
+
 test("boş korpus / boş girdi çökmemeli", () => {
   const m = buildPhraseModel([], {});
   assert.equal(m.ptable.size, 0);
