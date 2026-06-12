@@ -122,27 +122,51 @@ function show(el){ for(const s of [dropzone,statusEl,resultEl,errorEl]) s.classL
 function reset(){ fileInput.value=""; progressFill.style.width="0%"; show(dropzone); }
 function fail(m){ errorText.textContent=m; show(errorEl); }
 
-// gzip (.gz / 0x1f8b) ise açar, yoksa düz okur
-async function readModelFile(file){
-  const buf=new Uint8Array(await file.arrayBuffer());
+// gzip (.gz / 0x1f8b) baytlarını açar, yoksa düz UTF-8 okur
+async function decodeModelBytes(buf){
   if(buf[0]===0x1f && buf[1]===0x8b && "DecompressionStream" in window){
     const stream=new Blob([buf]).stream().pipeThrough(new DecompressionStream("gzip"));
     return await new Response(stream).text();
   }
   return new TextDecoder().decode(buf);
 }
+async function readModelFile(file){
+  return decodeModelBytes(new Uint8Array(await file.arrayBuffer()));
+}
+// Çözülmüş model JSON metnini doğrulayıp uygular (elle yükleme + otomatik yükleme ortak yolu)
+function applyModel(text){
+  const raw=JSON.parse(text);
+  if(!Array.isArray(raw.pcounts) && !Array.isArray(raw.ptable)) throw new Error("Bu bir öbek modeli değil. mt-train.js ile eğitin.");
+  model=deserializePhrase(raw);
+  modelBadge.textContent=`✓ model hazır · ${model.ptable.size} öbek`;
+  dropzone.classList.remove("disabled");
+  dropzone.querySelector(".dz-hint").textContent="Kaynak: "+(model.srcLang||"en")+" → Türkçe";
+}
 loadModelBtn.addEventListener("click", ()=>modelInput.click());
 modelInput.addEventListener("change", async ()=>{
   const f=modelInput.files[0]; if(!f) return;
-  try{
-    const raw=JSON.parse(await readModelFile(f));
-    if(!Array.isArray(raw.pcounts) && !Array.isArray(raw.ptable)) throw new Error("Bu bir öbek modeli değil. mt-train.js ile eğitin.");
-    model=deserializePhrase(raw);
-    modelBadge.textContent=`✓ model hazır · ${model.ptable.size} öbek`;
-    dropzone.classList.remove("disabled");
-    dropzone.querySelector(".dz-hint").textContent="Kaynak: "+(model.srcLang||"en")+" → Türkçe";
-  }catch(err){ modelBadge.textContent="model yüklenemedi: "+(err.message||err); }
+  try{ applyModel(await readModelFile(f)); }
+  catch(err){ modelBadge.textContent="model yüklenemedi: "+(err.message||err); }
 });
+
+// OTOMATİK YÜKLEME: site bir model.json.gz ile birlikte yayınlandıysa (GitHub
+// Pages vb.) ziyaretçi hiçbir şey yüklemeden çevirebilsin. Sıra: ?model=URL >
+// sayfa yanındaki model.json.gz > model.json. Bulunamazsa SESSİZCE elle
+// yükleme moduna düşülür (hata gösterilmez — yerel dosya:// kullanımı normaldir).
+async function autoLoadModel(){
+  const param=new URLSearchParams(location.search).get("model");
+  const candidates=param?[param]:["model.json.gz","model.json"];
+  for(const url of candidates){
+    try{
+      const res=await fetch(url); if(!res.ok) continue;
+      modelBadge.textContent="model indiriliyor…";
+      applyModel(await decodeModelBytes(new Uint8Array(await res.arrayBuffer())));
+      return true;
+    }catch(_){ /* sıradakini dene */ }
+  }
+  return false;
+}
+autoLoadModel().then(ok=>{ if(!ok) modelBadge.textContent="model yüklenmedi"; });
 
 browseBtn.addEventListener("click", ()=>fileInput.click());
 dropzone.addEventListener("click",(e)=>{ if(e.target!==browseBtn) fileInput.click(); });
