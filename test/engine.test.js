@@ -87,6 +87,21 @@ test("decode: trigram geçmişiyle öğrenilen içerik kelimesini üretir", () =
   assert.match(translate(m, "a dog"), /[Kk]öpek/);
 });
 
+test("translate: çıktı cilası özel ismi geri getirir (kelime motoru paritesi)", () => {
+  // "London" kendine çevrilir (özel isim); çeviride küçük harfe düşer ama cümle
+  // ortasında olduğu için detokenize büyütmez -> restoreCasing geri getirmeli.
+  // polish:false ile büyük harf geri GELMEMELİ.
+  const par = [
+    { src: "the city is London", tgt: "şehir London" },
+    { src: "the city is big", tgt: "şehir büyük" },
+  ];
+  const m = buildModel(par, { iterations: 30 });
+  const polished = translate(m, "the city is London");
+  assert.match(polished, /London/, "özel isim büyük harfle geri gelmeli");
+  const raw = translate(m, "the city is London", { polish: false });
+  assert.match(raw, /london/, "polish:false ile büyük harf geri gelmemeli");
+});
+
 test("kelime motoru: serialize/deserialize round-trip", () => {
   const m = buildModel([{ src: "the cat", tgt: "kedi" }, { src: "the dog", tgt: "köpek" }], { iterations: 15 });
   const before = translate(m, "the cat");
