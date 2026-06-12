@@ -12,16 +12,39 @@ test("glueOne: ünlü uyumlu ek üretimi", () => {
   assert.equal(glueOne("ev", ["+POSS"]), "evi");
 });
 
+test("glueOne: iyelik + hâl pronominal -n- kaynaştırması", () => {
+  assert.equal(glueOne("ev", ["+POSS", "+LOC"]), "evinde");
+  assert.equal(glueOne("ev", ["+POSS", "+ABL"]), "evinden");
+  assert.equal(glueOne("ev", ["+POSS", "+DAT"]), "evine");
+  assert.equal(glueOne("ev", ["+POSS", "+ACC"]), "evini");
+  assert.equal(glueOne("ev", ["+POSS", "+GEN"]), "evinin");
+  assert.equal(glueOne("araba", ["+POSS", "+LOC"]), "arabasında"); // ünlü kök -sı- + -n-
+  assert.equal(glueOne("araba", ["+POSS", "+DAT"]), "arabasına");
+  assert.equal(glueOne("yüz", ["+POSS", "+LOC"]), "yüzünde");       // yuvarlak ünlü uyumu
+  assert.equal(glueOne("ev", ["+LER", "+POSS", "+LOC"]), "evlerinde");
+});
+
 test("segmentTokens → glueTokens: KAYIPSIZ round-trip (çıktıyı bozmaz)", () => {
   const words = [
     "evlerde", "kitaplardan", "arabaya", "gözde", "kapıyı", "evlerin",
     "arabaların", "güzel", "bilgisayarları", "ev", "kod", "web", "ders",
     "okuldan", "şehirde", "yıllarca",
+    // iyelik + hâl (pronominal -n-) ve karışabilecek hâl-yalın biçimler
+    "evinde", "evinden", "evine", "arabasında", "arabasına", "yüzünde",
+    "evlerinde", "günde", "içinde", "ülkesinde",
   ];
   for (const w of words) {
     const back = glueTokens(segmentTokens([w])).join("");
     assert.equal(back, w, `round-trip kayıpsız olmalı: ${w} -> ${back}`);
   }
+});
+
+test("segmentWord: iyelik+hâl biçimleri köke + soyut eke ayrılır", () => {
+  // "evinde" -> ev +POSS +LOC olarak ayrışmalı (sadece yüzeye düşmemeli)
+  const seg = segmentTokens(["evinde"]);
+  assert.deepEqual(seg, ["ev", "+POSS", "+LOC"]);
+  // round-trip yine kayıpsız
+  assert.equal(glueTokens(seg).join(""), "evinde");
 });
 
 test("segmentWord: kısa/ASCII/sayı kelimeler dokunulmaz", () => {

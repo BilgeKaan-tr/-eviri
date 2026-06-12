@@ -56,38 +56,53 @@ function soften(stem) {
 // tokens: ["ev","+LER","+LOC"] -> "evlerde"
 export function glueOne(stem, suffixes) {
   let w = stem;
+  // Pronominal kaynaştırma -n-: 3.tekil iyelikten (+POSS) SONRA gelen hâl ekleri
+  // araya -n- alır: "evi" + LOC -> "evinde" (evide DEĞİL), "evi" + DAT -> "evine".
+  // afterPoss, bir önceki ekin +POSS olup olmadığını izler.
+  let afterPoss = false;
   for (const suf of suffixes) {
     const vowelStart = w; // uyum, mevcut yüzeye göre
     switch (suf) {
       case "+LER": // çoğul: -lar/-ler
         w += "l" + lowVowel(vowelStart) + "r";
+        afterPoss = false;
         break;
       case "+POSS": { // 3.tekil iyelik: -ı/-i/-u/-ü, ünlüden sonra -sı/-si
         w = endsWithVowel(w) ? w + "s" + highVowel(vowelStart) : soften(w) + highVowel(vowelStart);
+        afterPoss = true;
         break;
       }
       case "+ACC": { // belirtme hâli: -ı/-i/-u/-ü, ünlüden sonra -yı/-yi
-        w = endsWithVowel(w) ? w + "y" + highVowel(vowelStart) : soften(w) + highVowel(vowelStart);
+        if (afterPoss) w += "n" + highVowel(vowelStart);          // evi -> evini
+        else w = endsWithVowel(w) ? w + "y" + highVowel(vowelStart) : soften(w) + highVowel(vowelStart);
+        afterPoss = false;
         break;
       }
       case "+DAT": // yönelme: -a/-e, ünlüden sonra -ya/-ye
-        w = endsWithVowel(w) ? w + "y" + lowVowel(vowelStart) : soften(w) + lowVowel(vowelStart);
+        if (afterPoss) w += "n" + lowVowel(vowelStart);           // evi -> evine
+        else w = endsWithVowel(w) ? w + "y" + lowVowel(vowelStart) : soften(w) + lowVowel(vowelStart);
+        afterPoss = false;
         break;
       case "+LOC": { // bulunma: -da/-de/-ta/-te (ünsüz sertleşmesi)
-        const d = "pçtkfshş".includes(w[w.length - 1]) ? "t" : "d";
-        w += d + lowVowel(vowelStart);
+        if (afterPoss) { w += "n" + "d" + lowVowel(vowelStart); }  // evi -> evinde
+        else { const d = "pçtkfshş".includes(w[w.length - 1]) ? "t" : "d"; w += d + lowVowel(vowelStart); }
+        afterPoss = false;
         break;
       }
       case "+ABL": { // ayrılma: -dan/-den/-tan/-ten
-        const d = "pçtkfshş".includes(w[w.length - 1]) ? "t" : "d";
-        w += d + lowVowel(vowelStart) + "n";
+        if (afterPoss) { w += "n" + "d" + lowVowel(vowelStart) + "n"; } // evi -> evinden
+        else { const d = "pçtkfshş".includes(w[w.length - 1]) ? "t" : "d"; w += d + lowVowel(vowelStart) + "n"; }
+        afterPoss = false;
         break;
       }
       case "+GEN": // tamlayan: -ın/-in/-un/-ün, ünlüden sonra -nın/-nin
-        w = endsWithVowel(w) ? w + "n" + highVowel(vowelStart) + "n" : soften(w) + highVowel(vowelStart) + "n";
+        if (afterPoss) w += "n" + highVowel(vowelStart) + "n";    // evi -> evinin
+        else w = endsWithVowel(w) ? w + "n" + highVowel(vowelStart) + "n" : soften(w) + highVowel(vowelStart) + "n";
+        afterPoss = false;
         break;
       default:
         w += suf; // bilinmeyen etiket: olduğu gibi
+        afterPoss = false;
     }
   }
   return w;
@@ -97,7 +112,17 @@ export function glueOne(stem, suffixes) {
 // Sözlüksüz, en-uzun-ek-önce greedy soyma. Tanınmayan kuyruk kökte kalır.
 // Geri-üretilebilirlik için yalnızca GÜVENLİ ekler ayrılır (kök >= 2 harf).
 const SUFFIX_RULES = [
-  // [regex (sonek), etiket, minimum kalan kök uzunluğu]
+  // [regex (sonek), etiket | [etiketler], minimum kalan kök uzunluğu]
+  // 3.tekil iyelik + hâl (pronominal -n-): "evinde, arabasına, evinden". En dıştaki
+  // BİRLEŞİK ek; düz hâl eklerinden ÖNCE denenir. Yanlış eşleşmeler (örn. "günde",
+  // "içinde") round-trip doğrulamasıyla güvenle yüzey biçime düşer. Etiket dizisi
+  // kök→dış sırada uygulanır: [+POSS, +CASE].
+  [/(?:sında|sinde|sunda|sünde)$/, ["+POSS", "+LOC"], 2],   // arabasında
+  [/(?:ında|inde|unda|ünde)$/, ["+POSS", "+LOC"], 2],        // evinde, yüzünde
+  [/(?:sından|sinden|sundan|sünden)$/, ["+POSS", "+ABL"], 2],// arabasından
+  [/(?:ından|inden|undan|ünden)$/, ["+POSS", "+ABL"], 2],    // evinden
+  [/(?:sına|sine|suna|süne)$/, ["+POSS", "+DAT"], 2],         // arabasına
+  [/(?:ına|ine|una|üne)$/, ["+POSS", "+DAT"], 2],             // evine
   // hâl ekleri (en dışta) — önce bunları soy
   [/(?:nde|nda)$/, "+LOC", 3, true],   // iyelikli bulunma: evinde (POSS gerektirir; kabaca)
   [/(?:den|dan|ten|tan)$/, "+ABL", 3],
@@ -124,7 +149,10 @@ export function segmentWord(word) {
     for (const [re, tag, minLen] of SUFFIX_RULES) {
       const m = w.match(re);
       if (m && w.length - m[0].length >= minLen) {
-        suffixes.unshift(tag); // dıştan içe soyduğumuz için başa ekle
+        // tag dizi olabilir ([+POSS,+LOC] gibi birleşik ek); kök→dış sırasını
+        // koruyarak başa ekle (dıştan içe soyduğumuz için).
+        const tags = Array.isArray(tag) ? tag : [tag];
+        suffixes.unshift(...tags);
         w = w.slice(0, w.length - m[0].length);
         states.push({ stem: w, suffixes: suffixes.slice() });
         matched = true;
@@ -159,14 +187,20 @@ export function segmentTokens(tokens) {
 // Çeviri çıktısındaki kök+ek token dizisini yüzey biçime birleştirir.
 // Ardışık ek etiketlerini (+XXX) önceki köke yapıştırır.
 export function glueTokens(tokens) {
+  // Her kökü, onu izleyen TÜM ek etiketleriyle TEK glueOne çağrısında birleştir.
+  // (Ekleri tek tek uygulamak, +POSS sonrası pronominal -n- gibi eklerarası
+  // bağlamı kaybeder: "evi"+LOC tek başına "evide" üretirdi.)
   const out = [];
+  let stem = null, suf = [];
+  const flush = () => { if (stem !== null) { out.push(glueOne(stem, suf)); stem = null; suf = []; } };
   for (const tk of tokens) {
     if (/^\+[A-Z]+$/.test(tk)) {
-      if (out.length) out[out.length - 1] = glueOne(out[out.length - 1], [tk]);
-      // baştaki başıboş ek: yok say
+      if (stem !== null) suf.push(tk); // baştaki başıboş ek (kök yok): yok say
     } else {
-      out.push(tk);
+      flush();
+      stem = tk;
     }
   }
+  flush();
   return out;
 }
