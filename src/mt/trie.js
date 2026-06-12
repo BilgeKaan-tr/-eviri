@@ -18,6 +18,9 @@ function enLemmas(tok) {
   if (w.length > 2 && w.endsWith("s")) out.add(w.slice(0, -1));         // cars->car
   if (w.length > 4 && w.endsWith("ing")) { out.add(w.slice(0, -3)); out.add(w.slice(0, -3) + "e"); } // making->make
   if (w.length > 3 && w.endsWith("ed")) { out.add(w.slice(0, -2)); out.add(w.slice(0, -1)); }        // used->use
+  if (w.length > 4 && w.endsWith("est")) { out.add(w.slice(0, -3)); out.add(w.slice(0, -2)); }        // fastest->fast, nicest->nice
+  if (w.length > 3 && w.endsWith("er")) { out.add(w.slice(0, -2)); out.add(w.slice(0, -1)); }          // faster->fast, nicer->nice
+  if (w.length > 3 && w.endsWith("ly")) { out.add(w.slice(0, -2)); }                                   // quickly->quick
   out.delete(w);
   return [...out].filter((v) => v.length >= 2);
 }

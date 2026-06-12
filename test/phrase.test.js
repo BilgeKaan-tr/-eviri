@@ -53,6 +53,20 @@ test("bilinmeyen kelime: İngilizce lemma yedeği (çoğul -> tekil)", () => {
   assert.equal(translatePhrase(m, "cities", { reorder: false }), "Şehir");  // ies->y
 });
 
+test("bilinmeyen kelime: karşılaştırma/zarf eki yedeği (-er/-est/-ly)", () => {
+  const par = [];
+  for (let k = 0; k < 3; k++) {
+    par.push({ src: "fast", tgt: "hızlı" });
+    par.push({ src: "quick", tgt: "çabuk" });
+    par.push({ src: "nice", tgt: "güzel" });
+  }
+  const m = buildPhraseModel(par, { iterations: 25, maxPhrase: 2 });
+  assert.equal(translatePhrase(m, "faster", { reorder: false }), "Hızlı");   // -er -> fast
+  assert.equal(translatePhrase(m, "fastest", { reorder: false }), "Hızlı");  // -est -> fast
+  assert.equal(translatePhrase(m, "nicest", { reorder: false }), "Güzel");   // -est (e-sonlu) -> nice
+  assert.equal(translatePhrase(m, "quickly", { reorder: false }), "Çabuk");  // -ly -> quick
+});
+
 test("prunePhraseModel: düşük-sayımlı öbekleri eler, sık olanı korur", () => {
   const par = [];
   for (let i = 0; i < 3; i++) par.push({ src: "the cat", tgt: "kedi" }); // count 3
