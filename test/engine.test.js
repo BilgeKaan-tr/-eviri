@@ -102,6 +102,25 @@ test("translate: çıktı cilası özel ismi geri getirir (kelime motoru parites
   assert.match(raw, /london/, "polish:false ile büyük harf geri gelmemeli");
 });
 
+test("decode: Kneser-Ney kelime motorunda devreye girer (yeterli veride)", () => {
+  const adj = ["big", "small", "black", "white", "fast", "slow", "new", "old", "nice", "long", "short", "hot", "cold", "clean", "dirty", "blue", "green", "yellow"];
+  const trAdj = ["büyük", "küçük", "siyah", "beyaz", "hızlı", "yavaş", "yeni", "eski", "güzel", "uzun", "kısa", "sıcak", "soğuk", "temiz", "kirli", "mavi", "yeşil", "sarı"];
+  const noun = ["cat", "dog", "house", "car", "bird", "table", "door", "road"];
+  const trNoun = ["kedi", "köpek", "ev", "araba", "kuş", "masa", "kapı", "yol"];
+  const par = [];
+  for (let i = 0; i < adj.length; i++) for (let j = 0; j < adj.length; j++) {
+    if (i === j) continue;
+    for (let n = 0; n < noun.length; n++) par.push({ src: `${adj[i]} ${adj[j]} ${noun[n]}`, tgt: `${trAdj[i]} ${trAdj[j]} ${trNoun[n]}` });
+  }
+  const m = buildModel(par, { iterations: 6 });
+  assert.ok(m.lm.tri.size >= 2000, "yeterli trigram olmalı");
+  // KN açık (varsayılan): çeviri doğru + KN süreklilik tabloları kurulmalı
+  assert.match(translate(m, "big black cat"), /[Bb]üyük siyah kedi/);
+  assert.ok(m.lm._kn, "KN süreklilik tabloları kurulmalı");
+  // KN kapalı (interpolasyon) da çalışmalı
+  assert.match(translate(m, "big black cat", { kn: false }), /[Bb]üyük siyah kedi/);
+});
+
 test("kelime motoru: serialize/deserialize round-trip", () => {
   const m = buildModel([{ src: "the cat", tgt: "kedi" }, { src: "the dog", tgt: "köpek" }], { iterations: 15 });
   const before = translate(m, "the cat");
