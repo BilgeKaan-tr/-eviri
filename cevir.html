@@ -433,7 +433,10 @@ async function handleFile(file){
     const cache = new Map();   // ayni metin parcalarini tekrar cevirme
     // SURDURME: bu PDF icin onceden cevrilmis parcalari cihazdan geri yukle (yarida kalirsa bastan baslamaz)
     const docKey = (file.name || "pdf") + ":" + (file.size || 0);
-    try { for (const [k, v] of await idbLoadDoc(docKey)) cache.set(k, v); } catch (e) { console.warn("surdurme onbellegi okunamadi:", e); }
+    try {
+      const restored = await Promise.race([idbLoadDoc(docKey), new Promise((r) => setTimeout(() => r(new Map()), 3000))]);
+      for (const [k, v] of restored) cache.set(k, v);
+    } catch (e) { console.warn("surdurme onbellegi okunamadi:", e); }
     let done = cache.size, failed = 0; const t0 = performance.now();
     // TOPLU (batch) ceviri: benzersiz metinleri dile gore gruplayip N'erli cevirir
     // -> WebGPU/WASM tek tek yerine paralel kullanilir (cok daha hizli, ayni kalite).
@@ -472,7 +475,7 @@ async function handleFile(file){
           const ck = src + " " + slice[k];
           cache.set(ck, tr); entries.push([ck, tr]); done++;
         }
-        try { await idbPutDoc(docKey, entries); } catch (e) { /* surdurme yazilamazsa ceviri yine surer */ }
+        idbPutDoc(docKey, entries).catch(() => {}); // arka planda; ceviriyi bloke etme
         progressFill.style.width = Math.round(done / totalUniq * 100) + "%";
         phaseLabel.textContent = (Engine.device === "webgpu" ? "WebGPU" : "WASM") + " - " + BATCH + "'li toplu";
         progressText.textContent = "Çevriliyor... " + done + " / " + totalUniq + " parça";
