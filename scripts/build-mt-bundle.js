@@ -12,8 +12,10 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.join(__dirname, "..");
 const MT = path.join(root, "src", "mt");
 
-// Bağımlılık sırasına göre (önce tanımlananlar)
-const files = ["engine.js", "morph.js", "trie.js", "phrase.js", "align.js", "tune.js"];
+// Bağımlılık sırasına göre (önce tanımlananlar). turkmorph.js, phrase.js'ten
+// ÖNCE gelmeli: phrase.js ondan segmentTokens/glueTokens kullanır (import
+// satırları bundle'da silindiği için tanım daha önce gelmek zorunda).
+const files = ["engine.js", "morph.js", "turkmorph.js", "trie.js", "phrase.js", "align.js", "tune.js"];
 
 const seenConst = new Set();
 let out = "// OTOMATİK ÜRETİLDİ — scripts/build-mt-bundle.js (kaynak: src/mt/*)\n";
