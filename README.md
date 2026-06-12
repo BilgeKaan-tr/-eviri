@@ -100,11 +100,18 @@ reordering) tarayıcıda çevirin. Çeviri tamamen cihazınızda, bizim kodumuzl
 > ziyaretçi hiçbir şey seçmeden çevirir. Farklı konum için `?model=URL` kullanın.
 > Model bulunamazsa sessizce elle yükleme moduna düşer.
 >
-> 📦 Depoda **küçük bir demo model** (`model.json.gz`, ~10 KB; kaynak:
-> `data/demo-en-tr.tsv`) gelir; site boş açılmasın diye. **Kalitesi düşüktür,
-> yalnızca gösterimdir** — yalnızca ~100 örnek cümleyi bilir. Gerçek kullanım
-> için `npm run model-kalite` ile büyük korpustan eğitip kökteki `model.json.gz`'yi
-> değiştirin.
+> 📦 Depoda **eğitilmiş bir model** (`model.json.gz`, ~12 MB, 58 bin öbek) gelir;
+> site kutudan çıktığı gibi çeviri yapar. **Held-out 1000 cümlede BLEU 21.6 /
+> chrF 53.4.** Korpus: KDE yerelleştirme + İngilizce/Türkçe İncil + lonweb
+> (~141 bin temizlenmiş çift; `src/mt/clean.js` ile %23.5 gürültü elendi).
+> ⚠️ **Alan eğilimli** (yazılım/İncil dili) ve istatistiksel motorun tipik
+> kelime-sırası hataları olur. Daha iyi/temiz-lisanslı model için aşağıdaki
+> "Gerçek kalite" bölümüne bakın (örn. OPUS **Tatoeba**, CC-BY).
+>
+> **Lisans/köken notu:** Bu model KDE l10n (libre) + İncil + lonweb verisinden
+> türetilmiştir; ticari-temiz bir dağıtım için **Tatoeba (CC-BY)** gibi açık
+> lisanslı korpusla yeniden eğitmeniz önerilir. Kendi modelinizi eğitince kökteki
+> `model.json.gz`'yi onunla değiştirin (`npm run model-kalite`).
 
 > Tarayıcı motorunun çıktısı, Node motoruyla **birebir aynı** olacak şekilde
 > doğrulanmıştır.
