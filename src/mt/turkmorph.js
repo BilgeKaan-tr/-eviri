@@ -123,6 +123,10 @@ const SUFFIX_RULES = [
   [/(?:ından|inden|undan|ünden)$/, ["+POSS", "+ABL"], 2],    // evinden
   [/(?:sına|sine|suna|süne)$/, ["+POSS", "+DAT"], 2],         // arabasına
   [/(?:ına|ine|una|üne)$/, ["+POSS", "+DAT"], 2],             // evine
+  [/(?:sının|sinin|sunun|sünün)$/, ["+POSS", "+GEN"], 2],     // arabasının (GEN, ACC'ten önce: daha uzun)
+  [/(?:ının|inin|unun|ünün)$/, ["+POSS", "+GEN"], 2],         // evinin
+  [/(?:sını|sini|sunu|sünü)$/, ["+POSS", "+ACC"], 2],         // arabasını
+  [/(?:ını|ini|unu|ünü)$/, ["+POSS", "+ACC"], 2],             // evini
   // hâl ekleri (en dışta) — önce bunları soy
   [/(?:nde|nda)$/, "+LOC", 3, true],   // iyelikli bulunma: evinde (POSS gerektirir; kabaca)
   [/(?:den|dan|ten|tan)$/, "+ABL", 3],

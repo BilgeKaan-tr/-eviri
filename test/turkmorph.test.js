@@ -32,6 +32,7 @@ test("segmentTokens → glueTokens: KAYIPSIZ round-trip (çıktıyı bozmaz)", (
     // iyelik + hâl (pronominal -n-) ve karışabilecek hâl-yalın biçimler
     "evinde", "evinden", "evine", "arabasında", "arabasına", "yüzünde",
     "evlerinde", "günde", "içinde", "ülkesinde",
+    "evini", "evinin", "arabasını", "arabasının", "ülkesini", "yüzünü",
   ];
   for (const w of words) {
     const back = glueTokens(segmentTokens([w])).join("");
@@ -45,6 +46,9 @@ test("segmentWord: iyelik+hâl biçimleri köke + soyut eke ayrılır", () => {
   assert.deepEqual(seg, ["ev", "+POSS", "+LOC"]);
   // round-trip yine kayıpsız
   assert.equal(glueTokens(seg).join(""), "evinde");
+  // iyelik + belirtme/tamlayan da köke ayrışmalı
+  assert.deepEqual(segmentTokens(["evini"]), ["ev", "+POSS", "+ACC"]);
+  assert.deepEqual(segmentTokens(["evinin"]), ["ev", "+POSS", "+GEN"]);
 });
 
 test("segmentWord: kısa/ASCII/sayı kelimeler dokunulmaz", () => {
