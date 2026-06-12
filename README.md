@@ -228,6 +228,20 @@ tablo/formül/sütun düzeni ve taranmış (OCR) PDF henüz desteklenmez. Güçl
 **tam bağımsızlık, kendi verinle eğitim ve gizlilik.** En yüksek kalite için Claude
 sunucu sürümü (ücretli) kullanılabilir.
 
+## 🌐 Herkese açık yayınlama (GitHub Pages — ücretsiz)
+
+Kendi açık motorumuzla çalışan siteyi **ücretsiz** yayınlamak için bir Actions
+workflow'u hazır (`.github/workflows/pages.yml`):
+
+1. **Repo > Settings > Pages > Source = "GitHub Actions"** seçin (tek seferlik).
+2. (Önerilir) Eğittiğiniz modeli depo köküne **`model.json.gz`** olarak ekleyin —
+   site onu otomatik yükler, ziyaretçi anında çevirir.
+3. `main` dalına push edin (veya Actions sekmesinden workflow'u elle çalıştırın).
+
+Workflow `egit.html`/`cevir-kendi.html`/`cevir.html` + `font-data.js` + (varsa)
+`model.json.gz` ve bir açılış sayfasını yayınlar. **Sunucu/maliyet yoktur**;
+çeviri ziyaretçinin cihazında çalışır.
+
 ## ⚖️ Lisans ve Atıf
 
 Bu projenin **kendi kodu MIT lisanslıdır** ([LICENSE](LICENSE)) — özgürce
