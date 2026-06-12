@@ -65,80 +65,89 @@ const CORPORA = {
 };
 
 function arg(name, def) { const i = process.argv.indexOf(name); return i >= 0 ? process.argv[i + 1] : def; }
-const corpus = arg("--corpus", "tatoeba");
+// --corpus VIRGÜLLE birden çok korpus alabilir (alanları karıştır: akademik+roman+genel).
+// Örn: --corpus wikimatrix,opensubtitles,ted  -> dengeli geniş alanlı korpus.
+const corpusArg = arg("--corpus", "tatoeba");
 const out = arg("--out", "korpus.tsv");
-const limit = parseInt(arg("--limit", "0"), 10); // 0 = sınırsız
-// --holdout N: korpusa YAYILMIŞ (her 100'de bir) N çifti ayrı bir dev dosyasına
-// ayırır ve eğitimden ÇIKARIR. Böylece raporlanan BLEU/chrF gerçek görülmemiş
-// veriden gelir (toy dev seti yerine). --dev-out ile yol verilir.
+const limit = parseInt(arg("--limit", "0"), 10); // 0 = sınırsız (TOPLAM)
+// --holdout N: korpusa yayılmış N çifti ayrı dev dosyasına ayırır (eğitimden çıkar).
 const holdout = parseInt(arg("--holdout", "0"), 10);
 const devOut = arg("--dev-out", "data/dev.tsv");
-const url = CORPORA[corpus];
-if (!url) {
-  console.error(`Hata: bilinmeyen korpus '${corpus}'. Seçenekler: ${Object.keys(CORPORA).join(", ")}`);
-  process.exit(1);
+
+const corpora = corpusArg.split(",").map((x) => x.trim()).filter(Boolean);
+for (const c of corpora) {
+  if (!CORPORA[c]) { console.error(`Hata: bilinmeyen korpus '${c}'. Seçenekler: ${Object.keys(CORPORA).join(", ")}`); process.exit(1); }
+}
+// Çok korpusta TOPLAM limit korpus başına bölünür (dengeli karışım)
+const perLimit = limit ? Math.ceil(limit / corpora.length) : 0;
+
+// Tek korpusu indir + aç, .en/.tr yollarını döndür
+async function downloadExtract(name, tmp) {
+  const url = CORPORA[name];
+  const zipPath = path.join(tmp, "c.zip");
+  console.log(`İndiriliyor: ${name}\n  ${url}`);
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`indirme hatası (HTTP ${res.status})`);
+  const total = Number(res.headers.get("content-length")) || 0;
+  const fileStream = fs.createWriteStream(zipPath);
+  let got = 0;
+  for await (const chunk of res.body) {
+    got += chunk.length; fileStream.write(chunk);
+    if (total) process.stdout.write(`\r  %${Math.round(got / total * 100)} (${(got / 1048576).toFixed(1)} MB)`);
+  }
+  fileStream.end(); await new Promise((r) => fileStream.on("finish", r)); process.stdout.write("\n");
+  const fd = fs.openSync(zipPath, "r");
+  const { cdOffset, cdSize } = readEOCD(fd, fs.statSync(zipPath).size);
+  const entries = readCentralDir(fd, cdOffset, cdSize);
+  const enEntry = entries.find((e) => e.name.endsWith(".en"));
+  const trEntry = entries.find((e) => e.name.endsWith(".tr"));
+  if (!enEntry || !trEntry) { fs.closeSync(fd); throw new Error("zip içinde .en/.tr yok"); }
+  const enPath = path.join(tmp, "data.en"), trPath = path.join(tmp, "data.tr");
+  console.log("  açılıyor...");
+  await extractEntry(zipPath, fd, enEntry, enPath);
+  await extractEntry(zipPath, fd, trEntry, trPath);
+  fs.closeSync(fd);
+  return { enPath, trPath };
 }
 
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "opus-"));
-const zipPath = path.join(tmp, "c.zip");
-
-console.log(`İndiriliyor: ${corpus}\n  ${url}`);
-const res = await fetch(url);
-if (!res.ok) { console.error(`İndirme hatası (HTTP ${res.status}). İnternet/erişim kontrol edin.`); process.exit(1); }
-const total = Number(res.headers.get("content-length")) || 0;
-const fileStream = fs.createWriteStream(zipPath);
-let got = 0;
-for await (const chunk of res.body) {
-  got += chunk.length; fileStream.write(chunk);
-  if (total) process.stdout.write(`\r  %${Math.round(got / total * 100)} (${(got / 1048576).toFixed(1)} MB)`);
-}
-fileStream.end();
-await new Promise((r) => fileStream.on("finish", r));
-process.stdout.write("\n");
-
-// Zip'i saf Node ile aç (.en ve .tr paralel dosyaları)
-const fd = fs.openSync(zipPath, "r");
-const zsize = fs.statSync(zipPath).size;
-const { cdOffset, cdSize } = readEOCD(fd, zsize);
-const entries = readCentralDir(fd, cdOffset, cdSize);
-const enEntry = entries.find((e) => e.name.endsWith(".en"));
-const trEntry = entries.find((e) => e.name.endsWith(".tr"));
-if (!enEntry || !trEntry) { fs.closeSync(fd); console.error("Zip içinde .en/.tr dosyaları bulunamadı."); process.exit(1); }
-const enPath = path.join(tmp, "data.en"), trPath = path.join(tmp, "data.tr");
-console.log("  açılıyor...");
-await extractEntry(zipPath, fd, enEntry, enPath);
-await extractEntry(zipPath, fd, trEntry, trPath);
-fs.closeSync(fd);
-
-// İki paralel dosyayı satır-eşli AKIŞLA oku (büyük dosyalarda bellek dostu)
-const enIt = readline.createInterface({ input: fs.createReadStream(enPath, "utf8"), crlfDelay: Infinity })[Symbol.asyncIterator]();
-const trIt = readline.createInterface({ input: fs.createReadStream(trPath, "utf8"), crlfDelay: Infinity })[Symbol.asyncIterator]();
 const w = fs.createWriteStream(out, "utf8");
 let devW = null;
 if (holdout > 0) { fs.mkdirSync(path.dirname(devOut), { recursive: true }); devW = fs.createWriteStream(devOut, "utf8"); }
-let kept = 0, seen = 0, acc = 0, devKept = 0;
-while (true) {
-  const a = await enIt.next(), b = await trIt.next();
-  if (a.done || b.done) break;
-  seen++;
-  const en = a.value.replace(/\t/g, " ").trim();
-  const tr = b.value.replace(/\t/g, " ").trim();
-  if (!en || !tr) continue;
-  if (en.length > 500 || tr.length > 500) continue;            // aşırı uzun satır ele
-  const ratio = en.length / Math.max(1, tr.length);
-  if (ratio < 0.3 || ratio > 3.5) continue;                    // dengesiz çift ele
-  acc++;
-  // Korpusa yayılmış holdout: her 100. kabul edilen çifti dev'e ayır (eğitimden çıkar)
-  if (devW && devKept < holdout && acc % 100 === 0) { devW.write(en + "\t" + tr + "\n"); devKept++; continue; }
-  w.write(en + "\t" + tr + "\n");
-  if (++kept % 50000 === 0) process.stdout.write(`\r  ${kept} çift yazıldı`);
-  if (limit && kept >= limit) break;
+let kept = 0, devKept = 0, acc = 0;
+
+for (const name of corpora) {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "opus-"));
+  let keptThis = 0;
+  try {
+    const { enPath, trPath } = await downloadExtract(name, tmp);
+    const enIt = readline.createInterface({ input: fs.createReadStream(enPath, "utf8"), crlfDelay: Infinity })[Symbol.asyncIterator]();
+    const trIt = readline.createInterface({ input: fs.createReadStream(trPath, "utf8"), crlfDelay: Infinity })[Symbol.asyncIterator]();
+    while (true) {
+      const a = await enIt.next(), b = await trIt.next();
+      if (a.done || b.done) break;
+      const en = a.value.replace(/\t/g, " ").trim();
+      const tr = b.value.replace(/\t/g, " ").trim();
+      if (!en || !tr) continue;
+      if (en.length > 500 || tr.length > 500) continue;            // aşırı uzun satır ele
+      const ratio = en.length / Math.max(1, tr.length);
+      if (ratio < 0.3 || ratio > 3.5) continue;                    // dengesiz çift ele
+      acc++;
+      if (devW && devKept < holdout && acc % 100 === 0) { devW.write(en + "\t" + tr + "\n"); devKept++; continue; }
+      w.write(en + "\t" + tr + "\n"); kept++; keptThis++;
+      if (kept % 50000 === 0) process.stdout.write(`\r  toplam ${kept} çift yazıldı`);
+      if (perLimit && keptThis >= perLimit) break;
+    }
+    process.stdout.write("\n");
+    console.log(`  ✓ ${name}: ${keptThis} çift`);
+  } catch (e) {
+    console.error(`  ! ${name} atlandı: ${(e && e.message) || e}`);
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
 }
-w.end();
-await new Promise((r) => w.on("finish", r));
+w.end(); await new Promise((r) => w.on("finish", r));
 if (devW) { devW.end(); await new Promise((r) => devW.on("finish", r)); }
-fs.rmSync(tmp, { recursive: true, force: true });
 process.stdout.write("\n");
-console.log(`✓ ${kept} cümle çifti -> ${out}  (${seen} satır tarandı)`);
+console.log(`✓ TOPLAM ${kept} cümle çifti -> ${out}`);
 if (devW) console.log(`✓ ${devKept} doğrulama çifti -> ${devOut} (eğitimden ayrıldı)`);
-console.log(`Şimdi eğit:\n  node scripts/mt-train-parallel.js --tsv ${out} --out model.json --workers ${os.cpus().length} --stem --gzip`);
+console.log(`Şimdi eğit (bellek-dostu, kaliteli):\n  node scripts/mt-train-stream.js --tsv ${out} --out model.json --batch 30000 --iter 8 --maxphrase 6 --mincount 2 --segment --gzip`);
