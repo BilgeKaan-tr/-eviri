@@ -43,6 +43,14 @@ test("splitSentences: cümlelere böler", () => {
   assert.equal(splitSentences("Bir. İki! Üç?").length, 3);
 });
 
+test("splitSentences: noktalı kısaltmalarda (e.g./i.e.) yanlış bölmez", () => {
+  // "e.g." ve "i.e." sonrası nokta cümle sonu sayılmamalı -> tek cümle
+  assert.equal(splitSentences("Kediler, e.g. aslanlar, yırtıcıdır.").length, 1);
+  assert.equal(splitSentences("Bu önemli, i.e. kritik bir konudur.").length, 1);
+  // gerçek cümle sonu hâlâ bölünmeli
+  assert.equal(splitSentences("Birinci cümle. İkinci cümle.").length, 2);
+});
+
 test("detokenize: noktalama boşlukları + cümle başı büyütme", () => {
   assert.equal(detokenize(["merhaba", ",", "dünya", "."]), "Merhaba, dünya.");
   assert.equal(detokenize(["(", "test", ")"]), "(test)");
