@@ -113,6 +113,13 @@ export function glueOne(stem, suffixes) {
 // Geri-üretilebilirlik için yalnızca GÜVENLİ ekler ayrılır (kök >= 2 harf).
 const SUFFIX_RULES = [
   // [regex (sonek), etiket | [etiketler], minimum kalan kök uzunluğu]
+  // çoğul + 3.tekil iyelik + hâl: "evlerinde, arabalarına". EN UZUN birleşik ek;
+  // en başta (3.tekil-tekil birleşiklerden de önce) denenir ki tam ayrışsın.
+  [/(?:lerinde|larında)$/, ["+LER", "+POSS", "+LOC"], 2],
+  [/(?:lerinden|larından)$/, ["+LER", "+POSS", "+ABL"], 2],
+  [/(?:lerine|larına)$/, ["+LER", "+POSS", "+DAT"], 2],
+  [/(?:lerinin|larının)$/, ["+LER", "+POSS", "+GEN"], 2],
+  [/(?:lerini|larını)$/, ["+LER", "+POSS", "+ACC"], 2],
   // 3.tekil iyelik + hâl (pronominal -n-): "evinde, arabasına, evinden". En dıştaki
   // BİRLEŞİK ek; düz hâl eklerinden ÖNCE denenir. Yanlış eşleşmeler (örn. "günde",
   // "içinde") round-trip doğrulamasıyla güvenle yüzey biçime düşer. Etiket dizisi
@@ -149,7 +156,7 @@ export function segmentWord(word) {
   const states = [{ stem: word, suffixes: [] }];
   const suffixes = [];
   for (let layer = 0; layer < 3; layer++) {
-    let matched = false;
+    let matched = false, terminal = false;
     for (const [re, tag, minLen] of SUFFIX_RULES) {
       const m = w.match(re);
       if (m && w.length - m[0].length >= minLen) {
@@ -160,10 +167,14 @@ export function segmentWord(word) {
         w = w.slice(0, w.length - m[0].length);
         states.push({ stem: w, suffixes: suffixes.slice() });
         matched = true;
+        // Birleşik (çok-etiketli) kural TÜM çekim ekini köke kadar tüketir;
+        // daha fazla soyma kökün son ünlüsünü sahte bir ek (örn. +DAT) sanıp
+        // "araba"yı "arab"a indirir. Eşleşince katman soymayı durdur.
+        terminal = tags.length > 1;
         break;
       }
     }
-    if (!matched) break;
+    if (!matched || terminal) break;
   }
   // ROUND-TRIP GÜVENCESİ: en derinden sığa doğru, glueOne ile orijinali BİREBİR
   // geri verebilen ilk ayrışmayı seç. Böylece segmentTokens→glueTokens daima
