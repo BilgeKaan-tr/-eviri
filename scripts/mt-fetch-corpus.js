@@ -9,6 +9,7 @@
 //
 // Sonra:  node scripts/mt-train-parallel.js --tsv korpus.tsv --out model.json --workers 8 --stem --gzip
 import fs from "node:fs";
+import { cleanPair, makeDedup } from "../src/mt/clean.js";
 import os from "node:os";
 import path from "node:path";
 import zlib from "node:zlib";
@@ -113,7 +114,8 @@ async function downloadExtract(name, tmp) {
 const w = fs.createWriteStream(out, "utf8");
 let devW = null;
 if (holdout > 0) { fs.mkdirSync(path.dirname(devOut), { recursive: true }); devW = fs.createWriteStream(devOut, "utf8"); }
-let kept = 0, devKept = 0, acc = 0;
+let kept = 0, devKept = 0, acc = 0, dups = 0;
+const seenPair = makeDedup();   // korpuslar arası da tekilleştir
 
 for (const name of corpora) {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "opus-"));
@@ -125,12 +127,10 @@ for (const name of corpora) {
     while (true) {
       const a = await enIt.next(), b = await trIt.next();
       if (a.done || b.done) break;
-      const en = a.value.replace(/\t/g, " ").trim();
-      const tr = b.value.replace(/\t/g, " ").trim();
-      if (!en || !tr) continue;
-      if (en.length > 500 || tr.length > 500) continue;            // aşırı uzun satır ele
-      const ratio = en.length / Math.max(1, tr.length);
-      if (ratio < 0.3 || ratio > 3.5) continue;                    // dengesiz çift ele
+      const cleaned = cleanPair(a.value, b.value);                 // boş/uzun/dengesiz/HTML/çevrilmemiş ele
+      if (!cleaned) continue;
+      const [en, tr] = cleaned;
+      if (!seenPair(en, tr)) { dups++; continue; }                 // tekrarı ele
       acc++;
       if (devW && devKept < holdout && acc % 100 === 0) { devW.write(en + "\t" + tr + "\n"); devKept++; continue; }
       w.write(en + "\t" + tr + "\n"); kept++; keptThis++;
@@ -148,6 +148,6 @@ for (const name of corpora) {
 w.end(); await new Promise((r) => w.on("finish", r));
 if (devW) { devW.end(); await new Promise((r) => devW.on("finish", r)); }
 process.stdout.write("\n");
-console.log(`✓ TOPLAM ${kept} cümle çifti -> ${out}`);
+console.log(`✓ TOPLAM ${kept} cümle çifti -> ${out}  (elenen tekrar: ${dups})`);
 if (devW) console.log(`✓ ${devKept} doğrulama çifti -> ${devOut} (eğitimden ayrıldı)`);
 console.log(`Şimdi eğit (bellek-dostu, kaliteli):\n  node scripts/mt-train-stream.js --tsv ${out} --out model.json --batch 30000 --iter 8 --maxphrase 6 --mincount 2 --segment --gzip`);
