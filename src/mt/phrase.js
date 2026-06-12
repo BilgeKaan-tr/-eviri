@@ -20,6 +20,7 @@ import {
   detokenize,
   restoreCasing,
   polishPunct,
+  trUpperFirst,
 } from "./engine.js";
 import { stemTokens } from "./morph.js";
 import { segmentTokens, glueTokens } from "./turkmorph.js";
@@ -523,6 +524,7 @@ export function translatePhrase(model, text, opts = {}) {
     if (polish) {
       s = restoreCasing(s, sent, model.srcLang); // özel isim büyük harfini geri getir
       s = polishPunct(s);                         // sarkan/çift noktalama temizliği
+      s = trUpperFirst(s);                        // cümle başını büyüt
     }
     out.push(s);
   }

@@ -3,12 +3,21 @@ import assert from "node:assert/strict";
 import {
   tokenize, detokenize, trLower, splitSentences,
   trainIBM1, trainLM, lmScore3, buildModel, translate, serialize, deserialize,
-  restoreCasing, polishPunct,
+  restoreCasing, polishPunct, trUpperFirst,
 } from "../src/mt/engine.js";
 
 test("trLower: Türkçe büyük I/İ", () => {
   assert.equal(trLower("İSTANBUL"), "istanbul");
   assert.equal(trLower("IŞIK"), "ışık");
+});
+
+test("trUpperFirst: cümle başını Türkçe-duyarlı büyütür", () => {
+  assert.equal(trUpperFirst("kedi oturdu."), "Kedi oturdu.");
+  assert.equal(trUpperFirst("istanbul güzel."), "İstanbul güzel.");   // i -> İ
+  assert.equal(trUpperFirst("ışık var."), "Işık var.");               // ı -> I
+  assert.equal(trUpperFirst("\"merhaba\" dedi."), "\"Merhaba\" dedi."); // baştaki tırnağı atlar
+  assert.equal(trUpperFirst(""), "");                                  // boş güvenli
+  assert.equal(trUpperFirst("çocuk geldi."), "Çocuk geldi.");
 });
 
 test("restoreCasing: özel isim/kısaltma büyük harfi geri gelir", () => {
