@@ -99,6 +99,12 @@ reordering) tarayıcıda çevirin. Çeviri tamamen cihazınızda, bizim kodumuzl
 > `cevir-kendi.html` ile **aynı klasöre** koyarsanız sayfa onu **otomatik yükler** —
 > ziyaretçi hiçbir şey seçmeden çevirir. Farklı konum için `?model=URL` kullanın.
 > Model bulunamazsa sessizce elle yükleme moduna düşer.
+>
+> 📦 Depoda **küçük bir demo model** (`model.json.gz`, ~10 KB; kaynak:
+> `data/demo-en-tr.tsv`) gelir; site boş açılmasın diye. **Kalitesi düşüktür,
+> yalnızca gösterimdir** — yalnızca ~100 örnek cümleyi bilir. Gerçek kullanım
+> için `npm run model-kalite` ile büyük korpustan eğitip kökteki `model.json.gz`'yi
+> değiştirin.
 
 > Tarayıcı motorunun çıktısı, Node motoruyla **birebir aynı** olacak şekilde
 > doğrulanmıştır.
