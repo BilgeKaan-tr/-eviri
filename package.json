@@ -11,7 +11,8 @@
     "build:web": "node scripts/build-mt-bundle.js",
     "test": "node --test",
     "check:html": "node scripts/check-html.mjs",
-    "model": "node scripts/mt-fetch-corpus.js --corpus ted --out korpus.tsv --holdout 1000 --dev-out data/dev.tsv && node scripts/mt-train-parallel.js --tsv korpus.tsv --out model.json --workers 4 --iter 10 --mincount 2 --stem --gzip && node scripts/mt-eval.js --model model.json.gz --dev data/dev.tsv"
+    "model": "node scripts/mt-fetch-corpus.js --corpus ted --out korpus.tsv --holdout 1000 --dev-out data/dev.tsv && node scripts/mt-train-parallel.js --tsv korpus.tsv --out model.json --workers 4 --iter 10 --mincount 2 --stem --gzip && node scripts/mt-eval.js --model model.json.gz --dev data/dev.tsv",
+    "model-kalite": "node scripts/mt-fetch-corpus.js --corpus wikimatrix --out korpus.tsv --holdout 2000 --dev-out data/dev.tsv && node scripts/mt-train-stream.js --tsv korpus.tsv --out model.json --batch 30000 --iter 8 --maxphrase 6 --mincount 2 --segment --gzip && node scripts/mt-tune.js --model model.json.gz --dev data/dev.tsv --metric chrf --save && node scripts/mt-eval.js --model model.json.gz --dev data/dev.tsv"
   },
   "keywords": [
     "pdf",
