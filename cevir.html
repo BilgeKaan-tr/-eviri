@@ -183,6 +183,15 @@ self.onmessage = async (e) => {
     } catch (err) {
       self.postMessage({ type:"tError", id:m.id, message: String((err && err.message) || err) });
     }
+  } else if (m.type === "translateBatch") {
+    try {
+      // Bir dizi metni TEK seferde çevir (donanımı verimli kullanır)
+      const res = await translator(m.texts, { src_lang: m.src, tgt_lang: m.tgt });
+      const arr = (Array.isArray(res) ? res : [res]).map((o) => (o && o.translation_text) || "");
+      self.postMessage({ type:"batchResult", id:m.id, texts: arr });
+    } catch (err) {
+      self.postMessage({ type:"tError", id:m.id, message: String((err && err.message) || err) });
+    }
   }
 };
 `;
@@ -245,6 +254,7 @@ const Engine = {
 
   _onWorkerMsg(d) {
     if (d.type === "result") { const p = this.pending.get(d.id); if (p) { this.pending.delete(d.id); p.resolve(d.text); } }
+    else if (d.type === "batchResult") { const p = this.pending.get(d.id); if (p) { this.pending.delete(d.id); p.resolve(d.texts); } }
     else if (d.type === "tError") { const p = this.pending.get(d.id); if (p) { this.pending.delete(d.id); p.reject(new Error(d.message)); } }
   },
 
@@ -258,6 +268,19 @@ const Engine = {
     }
     return this.mainTranslator(text, { src_lang: src, tgt_lang: TGT_LANG })
       .then((res) => { const o = Array.isArray(res) ? res[0] : res; return (o && o.translation_text) || ""; });
+  },
+
+  // Bir dizi metni TEK çağrıda çevir -> donanım çok daha verimli kullanılır.
+  translateBatch(texts, src) {
+    if (this.mode === "worker") {
+      const id = ++this.reqId;
+      return new Promise((resolve, reject) => {
+        this.pending.set(id, { resolve, reject });
+        this.worker.postMessage({ type:"translateBatch", id, texts, src, tgt: TGT_LANG });
+      });
+    }
+    return this.mainTranslator(texts, { src_lang: src, tgt_lang: TGT_LANG })
+      .then((res) => (Array.isArray(res) ? res : [res]).map((o) => (o && o.translation_text) || ""));
   }
 };
 
@@ -371,29 +394,58 @@ async function handleFile(file){
 
     const cache = new Map();   // ayni metin parcalarini tekrar cevirme
     let done = 0, failed = 0; const t0 = performance.now();
+    // TOPLU (batch) ceviri: benzersiz metinleri dile gore gruplayip N'erli cevirir
+    // -> WebGPU/WASM tek tek yerine paralel kullanilir (cok daha hizli, ayni kalite).
+    const BATCH = (Engine.device === "webgpu") ? 4 : 2;
 
-    for(const job of jobs){
-      if(cancelRequested){ reset(); return; }
-      const key = job.src + " " + job.text;
-      let tr = cache.get(key);
-      if(tr === undefined){
-        try { tr = await Engine.translate(job.text, job.src); }
-        catch(e){ console.warn("parça çevrilemedi, orijinal korunuyor:", e); tr = job.text; failed++; }
-        cache.set(key, tr);
+    // 1) Benzersiz (src,text) parcalari topla (tekrar eden ust/altbilgi bir kez cevrilir)
+    const uniqBySrc = new Map(); // src -> Set(text)
+    for (const job of jobs) {
+      let setv = uniqBySrc.get(job.src);
+      if (!setv) uniqBySrc.set(job.src, (setv = new Set()));
+      setv.add(job.text);
+    }
+    const totalUniq = [...uniqBySrc.values()].reduce((s, mp) => s + mp.size, 0) || 1;
+
+    // 2) Her dil grubunu BATCH'erli cevir
+    for (const [src, setv] of uniqBySrc) {
+      const list = [...setv];
+      for (let b = 0; b < list.length; b += BATCH) {
+        if (cancelRequested) { reset(); return; }
+        const slice = list.slice(b, b + BATCH);
+        let results;
+        try {
+          results = await Engine.translateBatch(slice, src);
+        } catch (e) {
+          console.warn("toplu çeviri başarısız, tek tek deneniyor:", e);
+          results = [];
+          for (const t of slice) {
+            try { results.push(await Engine.translate(t, src)); }
+            catch (e2) { console.warn("parça çevrilemedi:", e2); results.push(null); }
+          }
+        }
+        for (let k = 0; k < slice.length; k++) {
+          let tr = results[k];
+          if (tr == null) { tr = slice[k]; failed++; }
+          cache.set(src + " " + slice[k], tr);
+          done++;
+        }
+        progressFill.style.width = Math.round(done / totalUniq * 100) + "%";
+        phaseLabel.textContent = (Engine.device === "webgpu" ? "WebGPU" : "WASM") + " - " + BATCH + "'li toplu";
+        progressText.textContent = "Çevriliyor... " + done + " / " + totalUniq + " parça";
+        const elapsed = (performance.now() - t0) / 1000;
+        const eta = elapsed / done * (totalUniq - done);
+        progressSub.textContent = done > BATCH ? ("kalan süre " + fmtTime(eta)) : "ilk parçalar biraz yavaş olabilir...";
       }
-      pageBuckets[job.pi][job.pj][job.ci] = tr;
+    }
 
-      done++;
-      progressFill.style.width = Math.round(done/totalJobs*100)+"%";
-      phaseLabel.textContent = `sayfa ${job.pi+1} / ${pages.length}`;
-      progressText.textContent = `Çevriliyor... ${done} / ${totalJobs} parça`;
-      const elapsed = (performance.now()-t0)/1000;
-      const eta = elapsed/done*(totalJobs-done);
-      progressSub.textContent = done>1 ? `kalan süre ${fmtTime(eta)}` : "ilk parça biraz yavaş olabilir...";
+    // 3) Tum isleri onbellekten ata (paragraf yapisi korunur)
+    for (const job of jobs) {
+      pageBuckets[job.pi][job.pj][job.ci] = cache.get(job.src + " " + job.text) ?? job.text;
     }
 
     if(cancelRequested){ reset(); return; }
-    if(failed >= totalJobs){
+    if(failed >= totalUniq){
       return fail("Çeviri yapılamadı. Cihaz belleği yetersiz olabilir; 'Hızlı / düşük bellek' modunu deneyin veya tarayıcıyı yeniden başlatın.");
     }
     progressText.textContent="Çevrilmiş PDF oluşturuluyor..."; progressSub.textContent="";
