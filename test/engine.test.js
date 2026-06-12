@@ -73,6 +73,20 @@ test("trainLM + lmScore3: trigram olasılığı sonlu ve negatif log", () => {
   assert.ok(Number.isFinite(s) && s < 0);
 });
 
+test("decode: trigram geçmişiyle öğrenilen içerik kelimesini üretir", () => {
+  // Çözücü iki-kelimelik geçmişle (lmScore3) çalışır; öğrenilen karşılığı
+  // hâlâ doğru üretmeli (bigram->trigram yükseltmesi regresyon yapmasın).
+  const par = [
+    { src: "the cat", tgt: "kedi" },
+    { src: "the dog", tgt: "köpek" },
+    { src: "a cat", tgt: "kedi" },
+    { src: "a dog", tgt: "köpek" },
+  ];
+  const m = buildModel(par, { iterations: 30 });
+  assert.match(translate(m, "the cat"), /[Kk]edi/);
+  assert.match(translate(m, "a dog"), /[Kk]öpek/);
+});
+
 test("kelime motoru: serialize/deserialize round-trip", () => {
   const m = buildModel([{ src: "the cat", tgt: "kedi" }, { src: "the dog", tgt: "köpek" }], { iterations: 15 });
   const before = translate(m, "the cat");
