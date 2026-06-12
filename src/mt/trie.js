@@ -10,14 +10,21 @@ const cOf = (v) => (Array.isArray(v) ? v[0] : v);
 const UNK = (tok) => [[tok, [0.1, 1]], ["", [1e-3, 1]]]; // bilinmeyen: geçir / düşür
 
 // İngilizce hafif lemma türevleri (çekim eki soyma) — bilinmeyen kelime yedeği
+// Çift-ünsüz sadeleştirme: "runn"->"run", "stopp"->"stop" (İngilizce -ing/-ed
+// öncesi ünsüz ikizlenmesi). Yalnızca son iki harf aynı ÜNSÜZ ise uygulanır.
+function dedouble(s) {
+  const a = s[s.length - 1];
+  if (s.length > 2 && a === s[s.length - 2] && !"aeiou".includes(a)) return s.slice(0, -1);
+  return null;
+}
 function enLemmas(tok) {
   const w = tok.toLowerCase();
   const out = new Set();
   if (w.length > 3 && w.endsWith("ies")) out.add(w.slice(0, -3) + "y"); // cities->city
   if (w.length > 3 && w.endsWith("es")) out.add(w.slice(0, -2));        // boxes->box
   if (w.length > 2 && w.endsWith("s")) out.add(w.slice(0, -1));         // cars->car
-  if (w.length > 4 && w.endsWith("ing")) { out.add(w.slice(0, -3)); out.add(w.slice(0, -3) + "e"); } // making->make
-  if (w.length > 3 && w.endsWith("ed")) { out.add(w.slice(0, -2)); out.add(w.slice(0, -1)); }        // used->use
+  if (w.length > 4 && w.endsWith("ing")) { const b = w.slice(0, -3); out.add(b); out.add(b + "e"); const d = dedouble(b); if (d) out.add(d); } // making->make, running->run
+  if (w.length > 3 && w.endsWith("ed")) { const b = w.slice(0, -2); out.add(b); out.add(w.slice(0, -1)); const d = dedouble(b); if (d) out.add(d); } // used->use, stopped->stop
   if (w.length > 4 && w.endsWith("est")) { out.add(w.slice(0, -3)); out.add(w.slice(0, -2)); }        // fastest->fast, nicest->nice
   if (w.length > 3 && w.endsWith("er")) { out.add(w.slice(0, -2)); out.add(w.slice(0, -1)); }          // faster->fast, nicer->nice
   if (w.length > 3 && w.endsWith("ly")) { out.add(w.slice(0, -2)); }                                   // quickly->quick

@@ -53,6 +53,17 @@ test("bilinmeyen kelime: İngilizce lemma yedeği (çoğul -> tekil)", () => {
   assert.equal(translatePhrase(m, "cities", { reorder: false }), "Şehir");  // ies->y
 });
 
+test("bilinmeyen kelime: çift-ünsüzlü -ing/-ed yedeği (running->run)", () => {
+  const par = [];
+  for (let k = 0; k < 3; k++) {
+    par.push({ src: "run", tgt: "koşmak" });
+    par.push({ src: "stop", tgt: "durmak" });
+  }
+  const m = buildPhraseModel(par, { iterations: 25, maxPhrase: 2 });
+  assert.equal(translatePhrase(m, "running", { reorder: false }), "Koşmak");  // runn -> run
+  assert.equal(translatePhrase(m, "stopped", { reorder: false }), "Durmak");  // stopp -> stop
+});
+
 test("bilinmeyen kelime: karşılaştırma/zarf eki yedeği (-er/-est/-ly)", () => {
   const par = [];
   for (let k = 0; k < 3; k++) {
