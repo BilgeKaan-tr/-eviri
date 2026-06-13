@@ -15,7 +15,26 @@ Kurallar:
 - Paragraf ve satir yapisini mumkun oldugunca koru.
 - Ozel isimler, kod, URL, e-posta ve sayilar oldugu gibi kalsin.
 - Metin parcali veya baglamsiz gorunse bile yine de cevir; soru sorma.
-- Zaten Turkce olan kisimlari oldugu gibi birak.`;
+- Zaten Turkce olan kisimlari oldugu gibi birak.
+- Terminoloji ve uslubu metnin tamaminda TUTARLI tut.`;
+
+// Terim sozlugunu sistem komutuna ekler (tutarli terminoloji icin).
+// glossary: { "source term": "hedef terim", ... }
+export function glossaryBlock(glossary) {
+  if (!glossary) return "";
+  const entries = Object.entries(glossary).filter(([s, t]) => s && t);
+  if (!entries.length) return "";
+  const lines = entries.slice(0, 200).map(([s, t]) => `- "${s}" -> "${t}"`).join("\n");
+  return `\n\nTerim sozlugu (bu karsiliklari ZORUNLU kullan):\n${lines}`;
+}
+
+// Onceki parcanin sonundan baglam ozeti (terminoloji/uslup tutarliligi icin).
+// Modele "devam metni" oldugu, bunun YENIDEN cevrilmemesi gerektigi soylenir.
+export function contextBlock(prevTr) {
+  if (!prevTr || !prevTr.trim()) return "";
+  const tail = prevTr.trim().slice(-500);
+  return `Onceki bolumun Turkce cevirisi (yalnizca baglam/terminoloji tutarliligi icin; TEKRAR CEVIRME, ciktiya EKLEME):\n"""${tail}"""\n\n`;
+}
 
 let client = null;
 function getClient() {
@@ -35,14 +54,21 @@ function getClient() {
  * @param {string} text
  * @returns {Promise<string>}
  */
-export async function translateText(text, model = MODEL) {
+export async function translateText(text, opts = {}) {
+  // Geriye donuk uyum: ikinci arguman string ise model kabul edilir.
+  if (typeof opts === "string") opts = { model: opts };
+  const model = opts.model || MODEL;
+  const glossary = opts.glossary || null;
   if (!text || !text.trim()) return "";
   const chunks = splitText(text, MAX_CHARS);
   const results = [];
+  let prevTr = ""; // onceki parcanin cevirisi -> bir sonrakine baglam
   for (const chunk of chunks) {
     // Kısmi başarı: bir parça başarısız olursa orijinalini koru, sayfayı kurtar
     try {
-      results.push(await translateChunk(chunk, model));
+      const tr = await translateChunk(chunk, model, 0, { glossary, prevTr });
+      results.push(tr);
+      prevTr = tr;
     } catch (e) {
       console.error(`[translate] parça hatası, orijinal korunuyor: ${e.message}`);
       results.push(chunk);
@@ -51,16 +77,16 @@ export async function translateText(text, model = MODEL) {
   return results.join("\n");
 }
 
-async function translateChunk(text, model = MODEL, attempt = 0) {
+async function translateChunk(text, model = MODEL, attempt = 0, ctx = {}) {
   try {
     const msg = await getClient().messages.create({
       model,
       max_tokens: 8192,
-      system: SYSTEM_PROMPT,
+      system: SYSTEM_PROMPT + glossaryBlock(ctx.glossary),
       messages: [
         {
           role: "user",
-          content: `Asagidaki metni Turkceye cevir:\n\n${text}`,
+          content: `${contextBlock(ctx.prevTr)}Asagidaki metni Turkceye cevir:\n\n${text}`,
         },
       ],
     });
@@ -75,7 +101,7 @@ async function translateChunk(text, model = MODEL, attempt = 0) {
     if ((status === 429 || status === 529 || status >= 500) && attempt < 4) {
       const wait = Math.pow(2, attempt) * 1000;
       await new Promise((r) => setTimeout(r, wait));
-      return translateChunk(text, model, attempt + 1);
+      return translateChunk(text, model, attempt + 1, ctx);
     }
     throw err;
   }

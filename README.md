@@ -18,7 +18,7 @@ düzenini koruyan yeni bir PDF üretilir.
   paralel kitaplardan öğrenir, hiçbir API/servise muhtaç değildir.
 - 🌍 Kaynak dil otomatik (NLLB sürümü) · 🔤 ğ, ş, ı, İ, ç, ö, ü doğru görünür
 - 📑 Başlık/paragraf düzeni korunur · 🔁 çeviri önbelleği · ⛔ iptal · 🌓 çift dilli çıktı
-- ✅ `npm test` ile 21 birim test; GitHub Actions CI
+- ✅ `npm test` ile 60+ birim test; GitHub Actions CI
 
 > **Benzer projeler:** Düzen-koruyan açık kaynak çeviri için
 > [PDFMathTranslate](https://github.com/PDFMathTranslate/PDFMathTranslate)
@@ -94,6 +94,28 @@ reordering) tarayıcıda çevirin. Çeviri tamamen cihazınızda, bizim kodumuzl
 1. `cevir-kendi.html` ve `font-data.js` aynı klasörde olsun.
 2. `cevir-kendi.html`'i açın → **model.json Yükle**.
 3. PDF'i sürükleyin; çeviri bitince indirin.
+
+> **Herkese açık yayın için (GitHub Pages vb.):** Eğittiğiniz `model.json.gz`'yi
+> `cevir-kendi.html` ile **aynı klasöre** koyarsanız sayfa onu **otomatik yükler** —
+> ziyaretçi hiçbir şey seçmeden çevirir. Farklı konum için `?model=URL` kullanın.
+> Model bulunamazsa sessizce elle yükleme moduna düşer.
+>
+> 📦 Depoda **eğitilmiş bir model** (`model.json.gz`, ~35 MB, **162 bin öbek**) gelir;
+> site kutudan çıktığı gibi çeviri yapar. **Held-out'ta chrF ~54.7 / BLEU ~24**
+> (ağırlıklar chrF'ye göre ayarlandı — Türkçe için karakter-tabanlı chrF, kelime-BLEU'dan
+> daha güvenilir; ayar ayrı bir sette doğrulandı). Korpus: **OPUS Tatoeba (CC-BY,
+> ~617 bin çift)** + KDE yerelleştirme + İngilizce/Türkçe İncil + lonweb = **~757 bin
+> temizlenmiş çift** (`src/mt/clean.js` ile gürültü/HTML/tekrar elendi + olumsuzluk
+> kasılması normalize edildi). Tatoeba'nın günlük dili sayesinde genel cümleler akıcı
+> çevrilir; olumsuzluk doğru aktarılır (örn. *the children are playing in the garden
+> → Çocuklar bahçede oynuyorlar*, *it doesn't matter → Önemli değil*).
+> ⚠️ İstatistiksel motorun tavanı sinir ağlarının altındadır; nadir kelimeler/uzun
+> cümlelerde kelime-sırası hataları olabilir. İlk açılışta ~35 MB iner (masaüstü önerilir).
+>
+> **Lisans/köken notu:** Ağırlıklı olarak **Tatoeba (CC-BY)** + KDE l10n (libre) +
+> İncil + lonweb verisinden türetilmiştir — atıfla ticari kullanıma uygun temel.
+> Kendi modelinizi eğitince kökteki `model.json.gz`'yi onunla değiştirin
+> (`npm run model-kalite`).
 
 > Tarayıcı motorunun çıktısı, Node motoruyla **birebir aynı** olacak şekilde
 > doğrulanmıştır.
@@ -222,6 +244,52 @@ sürükleyip bırakın, çeviri bittiğinde indirme bağlantısı belirir.
 tablo/formül/sütun düzeni ve taranmış (OCR) PDF henüz desteklenmez. Güçlü yanı:
 **tam bağımsızlık, kendi verinle eğitim ve gizlilik.** En yüksek kalite için Claude
 sunucu sürümü (ücretli) kullanılabilir.
+
+## 🌐 Herkese açık yayınlama (GitHub Pages — ücretsiz)
+
+Kendi açık motorumuzla çalışan siteyi **ücretsiz** yayınlamak için bir Actions
+workflow'u hazır (`.github/workflows/pages.yml`):
+
+1. **Repo > Settings > Pages > Source = "GitHub Actions"** seçin (tek seferlik).
+2. (Önerilir) Eğittiğiniz modeli depo köküne **`model.json.gz`** olarak ekleyin —
+   site onu otomatik yükler, ziyaretçi anında çevirir.
+3. `main` dalına push edin (veya Actions sekmesinden workflow'u elle çalıştırın).
+
+Workflow `egit.html`/`cevir-kendi.html`/`cevir.html` + `font-data.js` + (varsa)
+`model.json.gz` ve bir açılış sayfasını yayınlar. **Sunucu/maliyet yoktur**;
+çeviri ziyaretçinin cihazında çalışır.
+
+## ⚖️ Lisans ve Atıf
+
+Bu projenin **kendi kodu MIT lisanslıdır** ([LICENSE](LICENSE)) — özgürce
+kullanabilir, değiştirebilir, **ticari dahil** dağıtabilirsiniz. Ancak proje,
+farklı lisanslı üçüncü-taraf bileşenler içerir; **hangi yolu kullandığınız**
+hangi şartlara tabi olduğunuzu belirler:
+
+| Yol | Çeviri motoru | Lisans | Ticari kullanım |
+|---|---|---|---|
+| `egit.html` / `cevir-kendi.html` | **Kendi SMT'imiz** (`src/mt/`) | **MIT (bizim)** | ✅ Serbest |
+| `cevir.html` | **Meta NLLB-200** | **CC-BY-NC 4.0** | ❌ **Yalnızca ticari OLMAYAN** + atıf zorunlu |
+| Node sunucu | Anthropic Claude API | Anthropic şartları | API ücretine tabi |
+
+> ⚠️ **Önemli:** `cevir.html` çalışma anında Meta'nın **NLLB-200** modelini indirir.
+> Bu model **CC-BY-NC 4.0** ile lisanslıdır: **ticari kullanım yasaktır** ve Meta'ya
+> **atıf** gerekir. Tamamen özgür (ticari dahil) bir dağıtım istiyorsanız **kendi SMT
+> motorumuzu** (`cevir-kendi.html`) kullanın — o tamamen bizimdir ve MIT'tir.
+
+**Gömülü/üçüncü-taraf bileşenler ve lisansları:**
+
+- **DejaVu Sans** yazı tipi (`font-data.js`, gömülü) — DejaVu/Bitstream Vera serbest
+  lisansı (kullanım/dağıtım serbest, atıf önerilir).
+- **pdf.js** (`pdfjs-dist`) — Apache-2.0 · **pdf-lib** — MIT · **@pdf-lib/fontkit** — MIT
+- **franc** (dil algılama) — MIT · **transformers.js** (`@xenova/transformers`) — Apache-2.0
+- **Meta NLLB-200** model ağırlıkları — **CC-BY-NC 4.0** (yalnızca `cevir.html`).
+
+Bu izin-verici bileşenler (Apache-2.0/MIT) ticari kullanıma uygundur; tek
+kısıtlama NLLB ağırlıklarındadır. Eğitim için indirilen paralel korpusların
+(OPUS: TED, Tatoeba, WikiMatrix vb.) **her birinin kendi lisansı** vardır;
+ürettiğiniz modeli dağıtırken kullandığınız korpusun şartlarını kontrol edin
+(örn. Tatoeba CC-BY; WikiMatrix CC-BY-SA).
 
 ## Notlar
 

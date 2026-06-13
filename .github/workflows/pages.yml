@@ -1,0 +1,85 @@
+# Herkese açık tarayıcı sürümünü (kendi SMT motorumuz) GitHub Pages'te yayınlar.
+# Yalnızca statik dosyalar yayınlanır: sunucu/API/Claude yoktur, maliyet yoktur.
+# Çeviri ziyaretçinin cihazında çalışır (kendi SMT motorumuz, MIT).
+#
+# KURULUM (tek seferlik): GitHub repo > Settings > Pages > "Build and deployment"
+#   > Source: "GitHub Actions" seçin. Sonra bu workflow main'e her push'ta veya
+#   elle (workflow_dispatch) çalışır.
+#
+# MODEL: cevir-kendi.html, yanındaki model.json.gz'yi OTOMATİK yükler. Eğittiğiniz
+#   modeli depo köküne `model.json.gz` olarak ekleyin (ya da bu workflow'u bir
+#   sürümden/artifact'tan indirteck şekilde düzenleyin). Model yoksa site yine
+#   açılır; ziyaretçi elle model yükleyebilir.
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    # Bu repoda varsayılan dal main/master değil; varsayılan dala (ve ileride
+    # main/master'a) push'ta yayınla. Varsayılanı 'main' olarak yeniden
+    # adlandırırsan bu satırdan claude/* ismini kaldırabilirsin.
+    branches: [main, master, claude/modest-rubin-VTqdO]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Aynı anda tek dağıtım; sıradakini iptal etme (yayını yarıda kesmemek için)
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # src/mt -> egit.html / cevir-kendi.html (saf Node, bağımlılık kurmaya gerek yok)
+      - name: Bundle'ı üret (egit.html / cevir-kendi.html taze)
+        run: node scripts/build-mt-bundle.js
+
+      - name: Statik siteyi topla (_site)
+        run: |
+          mkdir -p _site
+          cp cevir-kendi.html cevir.html egit.html font-data.js _site/
+          # Eğitilmiş model varsa yayına dahil et (otomatik yüklenir)
+          [ -f model.json.gz ] && cp model.json.gz _site/ || echo "model.json.gz yok — site elle yükleme moduyla açılır"
+          # Açılış sayfası: doğrudan kendi SMT çevirmenimize yönlendir
+          cat > _site/index.html <<'HTML'
+          <!doctype html><html lang="tr"><head><meta charset="utf-8">
+          <meta name="viewport" content="width=device-width,initial-scale=1">
+          <title>PDF Çeviri — Ücretsiz, Çevrimdışı</title>
+          <style>body{font-family:system-ui,sans-serif;max-width:42rem;margin:3rem auto;padding:0 1rem;line-height:1.6;color:#1a1a1a}a.btn{display:inline-block;background:#2563eb;color:#fff;padding:.7rem 1.2rem;border-radius:.6rem;text-decoration:none;margin:.3rem .3rem 0 0}a.alt{background:#475569}small{color:#666}</style>
+          </head><body>
+          <h1>📄 PDF Çeviri</h1>
+          <p>PDF dosyalarını <b>Türkçe'ye</b> çeviren, <b>tamamen ücretsiz ve cihazınızda</b>
+          çalışan araç. Sunucu yok, hesap yok, veriniz cihazınızdan çıkmaz.</p>
+          <p>
+            <a class="btn" href="cevir-kendi.html">Çevir (kendi açık motorumuz)</a>
+            <a class="btn alt" href="egit.html">Kendi modelini eğit</a>
+            <a class="btn alt" href="cevir.html">Yüksek kalite (NLLB)</a>
+          </p>
+          <p><small>"Çevir" ve "Eğit" tamamen bizim açık (MIT) motorumuzla çalışır.
+          "Yüksek kalite (NLLB)" Meta'nın CC-BY-NC modelini indirir (ticari olmayan kullanım).</small></p>
+          </body></html>
+          HTML
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

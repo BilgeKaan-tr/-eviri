@@ -7,7 +7,7 @@
 import fs from "node:fs";
 import zlib from "node:zlib";
 import readline from "node:readline";
-import { buildPhraseModel, mergeModels, serializePhrase } from "../src/mt/phrase.js";
+import { buildPhraseModel, mergeModels, serializePhrase, prunePhraseModel } from "../src/mt/phrase.js";
 
 function arg(name, def) { const i = process.argv.indexOf(name); return i >= 0 ? process.argv[i + 1] : def; }
 const has = (n) => process.argv.includes(n);
@@ -19,8 +19,10 @@ const opts = {
   srcLang: arg("--lang", "en"),
   iterations: parseInt(arg("--iter", "15"), 10),
   maxPhrase: parseInt(arg("--maxphrase", "4"), 10),
-  minCount: parseInt(arg("--mincount", "1"), 10),
+  // Büyük korpus için varsayılan budama eşiği 2 (bellek + boyut). Küçük veride 1.
+  minCount: parseInt(arg("--mincount", "2"), 10),
   stem: has("--stem"),
+  segment: has("--segment"),
 };
 if (!tsv) { console.error("Hata: --tsv buyuk.tsv verin."); process.exit(1); }
 
@@ -30,7 +32,9 @@ const t0 = Date.now();
 function foldBatch() {
   if (!batch.length) return;
   const m = buildPhraseModel(batch, opts);
-  running = running ? mergeModels([running, m]) : m;
+  // Grup düzeyinde tek görülen gürültülü öbekleri ele (birikim belleğini sınırlar)
+  if (opts.minCount > 1) prunePhraseModel(m, { minCount: opts.minCount });
+  running = running ? mergeModels([running, m], { derivePtable: false }) : m;
   total += batch.length; batches++;
   process.stdout.write(`\r  ${total} cümle · ${batches} grup işlendi`);
   batch = [];
@@ -49,6 +53,7 @@ foldBatch();
 process.stdout.write("\n");
 
 if (!running) { console.error("Hata: cümle çifti yok."); process.exit(1); }
+if (opts.minCount > 1) prunePhraseModel(running, { minCount: opts.minCount });
 const json = serializePhrase(running);
 let outP = out;
 if (has("--gzip")) { if (!outP.endsWith(".gz")) outP += ".gz"; fs.writeFileSync(outP, zlib.gzipSync(json, { level: 9 })); }

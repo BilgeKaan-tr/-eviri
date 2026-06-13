@@ -40,12 +40,20 @@ function stripOne(w) {
 export function stemTr(word) {
   let w = word.toLocaleLowerCase("tr");
   // En fazla 2 ek katmanı soy (derinlik artınca hatalar birikir: kediler->ket)
+  let stripped = false;
   for (let k = 0; k < 2; k++) {
     const s = stripOne(w);
     if (!s || s.length < 4) break;
     w = s;
+    stripped = true;
   }
-  w = w.replace(/b$/, "p").replace(/c$/, "ç").replace(/d$/, "t").replace(/ğ$/, "k");
+  // Ünsüz sertleştirme (b→p, c→ç, d→t, ğ→k) YALNIZCA gerçekten ek soyulduysa
+  // uygulanır: "kitabı"→"kitab"→"kitap". Aksi halde doğal sonu b/c/d/ğ olan
+  // kelimeler bozulurdu — "web"→"wep", "kod"→"kot", "ad"→"at" gibi (ve farklı
+  // kökleri hizalamada çakıştırırdı).
+  if (stripped) {
+    w = w.replace(/b$/, "p").replace(/c$/, "ç").replace(/d$/, "t").replace(/ğ$/, "k");
+  }
   return w;
 }
 

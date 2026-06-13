@@ -86,6 +86,18 @@ node scripts/mt-fetch-corpus.js --corpus opensubtitles --out korpus.tsv --limit 
 node scripts/mt-train-parallel.js --tsv korpus.tsv --out model.json --workers 4 --stem --gzip
 ```
 
+> 💾 **"JavaScript heap out of memory" hatası alırsanız** (az RAM'li bilgisayar):
+> Eğitim varsayılan olarak nadir öbekleri eler (`--mincount 2`), ama yine de
+> taşarsa belleği şöyle artırın (Windows):
+> ```bash
+> set NODE_OPTIONS=--max-old-space-size=4096
+> ```
+> sonra eğitim komutunu tekrar çalıştırın. Hâlâ taşarsa `--mincount 3` ekleyin
+> veya çok büyük korpusta akışlı eğitimi kullanın:
+> ```bash
+> node scripts/mt-train-stream.js --tsv korpus.tsv --out model.json --batch 20000 --stem --gzip
+> ```
+
 ---
 
 ## ADIM 5 — PDF çevir

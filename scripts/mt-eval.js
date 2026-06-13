@@ -7,7 +7,7 @@
 import fs from "node:fs";
 import zlib from "node:zlib";
 import { deserializePhrase, translatePhrase } from "../src/mt/phrase.js";
-import { evaluate } from "../src/mt/tune.js";
+import { evaluate, chrf } from "../src/mt/tune.js";
 
 function arg(name, def) { const i = process.argv.indexOf(name); return i >= 0 ? process.argv[i + 1] : def; }
 const modelPath = arg("--model", "model.json");
@@ -27,8 +27,11 @@ for (const line of fs.readFileSync(devPath, "utf8").split(/\r?\n/)) {
 }
 if (!dev.length) { console.error("Hata: dev seti boş."); process.exit(1); }
 
-const bleu = evaluate(model, dev, model.weights || {});
-console.log(`${dev.length} doğrulama çifti · BLEU: ${(bleu * 100).toFixed(2)}`);
+const w = model.weights || {};
+const bleu = evaluate(model, dev, w, "bleu");
+const cf = chrf(dev.map((d) => translatePhrase(model, d.src, w)), dev.map((d) => d.tgt));
+// chrF (karakter n-gram F2) sondan eklemeli Türkçe için daha güvenilir bir ölçü
+console.log(`${dev.length} doğrulama çifti · BLEU: ${(bleu * 100).toFixed(2)} · chrF: ${(cf * 100).toFixed(2)}`);
 console.log("\nÖrnek çeviriler:");
 for (const d of dev.slice(0, nEx)) {
   console.log(`  kaynak  : ${d.src}`);
