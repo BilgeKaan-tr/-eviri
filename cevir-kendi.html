@@ -149,6 +149,27 @@ modelInput.addEventListener("change", async ()=>{
   catch(err){ modelBadge.textContent="model yüklenemedi: "+(err.message||err); }
 });
 
+// ÖNBELLEK: model (~80 MB) bir kez inip Cache Storage'da KALICI saklanır; sonraki
+// açılış/yenilemelerde ağdan TEKRAR İNMEZ. Mobil tarayıcılar büyük yanıtları HTTP
+// önbelleğinde tutmaz, bu yüzden Cache API kullanırız (kota dışında boyut sınırı yok).
+// Güncellik: ETag ile koşullu istek (If-None-Match) → değişmemişse 304 (bayt inmez),
+// model güncellenmişse yeni sürüm indirilip önbellek tazelenir, çevrimdışıysa önbellek.
+const MODEL_CACHE="cevir-kendi-model-v1";
+async function fetchModelCached(url){
+  if(!("caches" in window)) return fetch(url);              // güvensiz bağlam / eski tarayıcı
+  let cache, cached;
+  try{ cache=await caches.open(MODEL_CACHE); cached=await cache.match(url); }
+  catch(_){ return fetch(url); }                            // gizli mod vb.
+  try{
+    const etag=cached && cached.headers.get("ETag");
+    const res=await fetch(url, etag?{headers:{"If-None-Match":etag}}:{});
+    if(res.status===304 && cached) return cached;           // değişmemiş → önbellekten (ağdan inmez)
+    if(res.ok){ try{ await cache.put(url, res.clone()); }catch(_){ } return res; } // tazele
+    if(cached) return cached;                               // ağ hatası → eldeki önbellek
+    return res;
+  }catch(_){ if(cached) return cached; throw _; }           // çevrimdışı → önbellek
+}
+
 // OTOMATİK YÜKLEME: site bir model.json.gz ile birlikte yayınlandıysa (GitHub
 // Pages vb.) ziyaretçi hiçbir şey yüklemeden çevirebilsin. Sıra: ?model=URL >
 // sayfa yanındaki model.json.gz > model.json. Bulunamazsa SESSİZCE elle
@@ -158,9 +179,14 @@ async function autoLoadModel(){
   const candidates=param?[param]:["model.json.gz","model.json"];
   for(const url of candidates){
     try{
-      const res=await fetch(url); if(!res.ok) continue;
       modelBadge.textContent="model indiriliyor…";
-      applyModel(await decodeModelBytes(new Uint8Array(await res.arrayBuffer())));
+      const res=await fetchModelCached(url); if(!res.ok) continue;
+      const buf=new Uint8Array(await res.arrayBuffer());
+      // Dev JSON'un çözülmesi (parse) ana iş parçacığını kısa süre kilitler; durumu
+      // önce boyatıp kullanıcıyı bilgilendir, sonra çöz.
+      modelBadge.textContent="model işleniyor… (birkaç saniye, sayfa kısa süre yanıt vermeyebilir)";
+      await new Promise(r=>requestAnimationFrame(()=>setTimeout(r,0)));
+      applyModel(await decodeModelBytes(buf));
       return true;
     }catch(_){ /* sıradakini dene */ }
   }
