@@ -65,6 +65,16 @@ test("detokenize: noktalama boşlukları + cümle başı büyütme", () => {
   assert.equal(detokenize(["(", "test", ")"]), "(test)");
 });
 
+test("detokenize: Türkçe kesme işareti (clitic) bitişik; başıboş tırnak atılır", () => {
+  // İki yanı da kelime olan apostrof = clitic ("Roma'da") -> bitişik yazılır.
+  assert.equal(detokenize(["roma", "'", "da"]), "Roma'da");
+  assert.equal(detokenize(["1990", "'", "da"]), "1990'da");
+  // Başıboş/yarım tırnak (bozuk öbek gürültüsü) atılır: "bir ' , ' da" -> "bir, da".
+  assert.equal(detokenize(["bir", "'", ",", "'", "da"]), "Bir, da");
+  // Baştaki/sondaki sarkan tırnak da atılır.
+  assert.equal(detokenize(["'", "ev", "'"]), "Ev");
+});
+
 test("trainIBM1: kelime hizalamasını öğrenir (EM)", () => {
   const pairs = [
     { e: ["the", "cat"], f: ["kedi"] },
