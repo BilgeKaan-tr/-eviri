@@ -101,13 +101,14 @@ reordering) tarayıcıda çevirin. Çeviri tamamen cihazınızda, bizim kodumuzl
 > Model bulunamazsa sessizce elle yükleme moduna düşer.
 >
 > 📦 Depoda **eğitilmiş bir model** (`model.json.gz`, ~35 MB, **162 bin öbek**) gelir;
-> site kutudan çıktığı gibi çeviri yapar. **Held-out 1500 cümlede BLEU 24.9 /
-> chrF 53.0.** Korpus: **OPUS Tatoeba (CC-BY, ~617 bin çift)** + KDE yerelleştirme
-> + İngilizce/Türkçe İncil + lonweb = **~757 bin temizlenmiş çift** (`src/mt/clean.js`
-> ile gürültü/HTML/tekrar elendi + olumsuzluk kasılması normalize edildi). Tatoeba'nın
-> günlük dili sayesinde genel cümleler akıcı çevrilir; olumsuzluk doğru aktarılır
-> (örn. *the children are playing in the garden → Çocuklar bahçede oynuyor*,
-> *it doesn't matter → Önemli değil*).
+> site kutudan çıktığı gibi çeviri yapar. **Held-out'ta chrF ~54.7 / BLEU ~24**
+> (ağırlıklar chrF'ye göre ayarlandı — Türkçe için karakter-tabanlı chrF, kelime-BLEU'dan
+> daha güvenilir; ayar ayrı bir sette doğrulandı). Korpus: **OPUS Tatoeba (CC-BY,
+> ~617 bin çift)** + KDE yerelleştirme + İngilizce/Türkçe İncil + lonweb = **~757 bin
+> temizlenmiş çift** (`src/mt/clean.js` ile gürültü/HTML/tekrar elendi + olumsuzluk
+> kasılması normalize edildi). Tatoeba'nın günlük dili sayesinde genel cümleler akıcı
+> çevrilir; olumsuzluk doğru aktarılır (örn. *the children are playing in the garden
+> → Çocuklar bahçede oynuyorlar*, *it doesn't matter → Önemli değil*).
 > ⚠️ İstatistiksel motorun tavanı sinir ağlarının altındadır; nadir kelimeler/uzun
 > cümlelerde kelime-sırası hataları olabilir. İlk açılışta ~35 MB iner (masaüstü önerilir).
 >
