@@ -18,6 +18,8 @@ test("trUpperFirst: cümle başını Türkçe-duyarlı büyütür", () => {
   assert.equal(trUpperFirst("\"merhaba\" dedi."), "\"Merhaba\" dedi."); // baştaki tırnağı atlar
   assert.equal(trUpperFirst(""), "");                                  // boş güvenli
   assert.equal(trUpperFirst("çocuk geldi."), "Çocuk geldi.");
+  assert.equal(trUpperFirst("2023'te oldu."), "2023'te oldu.");   // sayı+kesme eki: ek küçük kalır
+  assert.equal(trUpperFirst("25'da arttı."), "25'da arttı.");     // "25'Da" DEĞİL
 });
 
 test("restoreCasing: özel isim/kısaltma büyük harfi geri gelir", () => {
@@ -37,6 +39,9 @@ test("polishPunct: sarkan/çift noktalama temizlenir, cümle sonu korunur", () =
   assert.equal(polishPunct(", baştaki virgül"), "baştaki virgül");
   assert.equal(polishPunct("normal cümle."), "normal cümle.");
   assert.equal(polishPunct("soru ?"), "soru?");
+  assert.equal(polishPunct("geldi.. ve gitti"), "geldi. ve gitti");  // çift nokta -> tek
+  assert.equal(polishPunct("bekle... sonra"), "bekle... sonra");      // üç nokta (ellipsis) korunur
+  assert.equal(polishPunct("ne??"), "ne?");                            // tekrarlı ? -> tek
 });
 
 test("tokenize: sayı/URL/e-posta atomik kalır", () => {
