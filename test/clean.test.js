@@ -36,6 +36,14 @@ test("cleanPair: aşırı uzun satırı eler", () => {
   assert.equal(cleanPair("x".repeat(600), "y".repeat(600)), null);
 });
 
+test("cleanPair: İngilizce olumsuzluk kasılmasını birleştirir (could n't -> couldn't)", () => {
+  assert.deepEqual(cleanPair("Tom could n't come .", "Tom gelemedi ."),
+    ["Tom couldn't come .", "Tom gelemedi ."]);
+  assert.deepEqual(cleanPair("I do n't know", "Bilmiyorum"), ["I don't know", "Bilmiyorum"]);
+  // doğal "couldn't" değişmeden kalır
+  assert.deepEqual(cleanPair("I couldn't sleep", "Uyuyamadım"), ["I couldn't sleep", "Uyuyamadım"]);
+});
+
 test("makeDedup: aynı çifti ikinci kez reddeder", () => {
   const seen = makeDedup();
   assert.equal(seen("the house", "ev"), true);

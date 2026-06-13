@@ -15,7 +15,12 @@ export function cleanPair(enRaw, trRaw, opts = {}) {
   const minRatio = opts.minRatio ?? 0.3;
   const maxRatio = opts.maxRatio ?? 3.5;
 
-  const en = String(enRaw ?? "").replace(/\s+/g, " ").trim();
+  // İngilizce ön-tokenizasyon düzeltmesi: bazı korpuslar (ör. OPUS Tatoeba)
+  // olumsuzluk kasılmasını ayırır ("could n't"). Doğal metin/motor tokenizasyonu
+  // "couldn't" bekler; bu uyumsuzluk eğitimde olumsuzluğun kaybolmasına yol açar
+  // ("do n't" -> ["do","n't"] vs "don't" -> ["don","'","t"]). Doğal metinde
+  // " n't" (boşluklu) görülmez, bu yüzden düzeltme güvenlidir.
+  const en = String(enRaw ?? "").replace(/\s+/g, " ").trim().replace(/ n't\b/g, "n't");
   const tr = String(trRaw ?? "").replace(/\s+/g, " ").trim();
 
   if (!en || !tr) return null;                          // boş taraf
