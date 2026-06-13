@@ -14,7 +14,10 @@ name: Deploy to GitHub Pages
 
 on:
   push:
-    branches: [main, master]
+    # Bu repoda varsayılan dal main/master değil; varsayılan dala (ve ileride
+    # main/master'a) push'ta yayınla. Varsayılanı 'main' olarak yeniden
+    # adlandırırsan bu satırdan claude/* ismini kaldırabilirsin.
+    branches: [main, master, claude/modest-rubin-VTqdO]
   workflow_dispatch:
 
 permissions:
