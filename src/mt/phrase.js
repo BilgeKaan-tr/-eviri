@@ -516,7 +516,18 @@ export function translatePhrase(model, text, opts = {}) {
   const out = [];
   for (const sent of splitSentences(text)) {
     const e = tokenize(sent, model.srcLang);
-    let dec = reorder ? decodePhraseReorder(e, model, opts) : decodePhrase(e, model, opts);
+    // Cümle sonu noktalamasını (. ! ? ve izleyen kapanış jetonları) yeniden
+    // sıralamanın DIŞINDA tut: distorsiyonlu çözücü bu jetonu cümle ortasına
+    // taşıyıp sahte cümle sınırı (ve ardından yanlış büyük harf) üretiyordu.
+    // Sondan ayır, çeviriden sonra geri ekle → terminal noktalama daima sonda kalır.
+    let head = e, tail = [];
+    if (reorder && e.length > 1) {
+      let cut = e.length;
+      while (cut > 0 && /^[^\p{L}\p{N}]+$/u.test(e[cut - 1])) cut--;
+      if (cut > 0 && cut < e.length) { head = e.slice(0, cut); tail = e.slice(cut); }
+    }
+    let dec = reorder ? decodePhraseReorder(head, model, opts) : decodePhrase(e, model, opts);
+    if (tail.length) dec = dec.concat(tail);
     // Segmentasyonla eğitilmişse: kök + soyut ek token'larını ünlü uyumlu
     // yüzey biçime birleştir.
     if (model.segmented) dec = glueTokens(dec);
