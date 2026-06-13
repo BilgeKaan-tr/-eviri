@@ -416,17 +416,41 @@ async function extractPdf(data){
 const median = (a) => { if (!a || !a.length) return 0; const s = [...a].sort((x, y) => x - y); return s[Math.floor(s.length / 2)]; };
 // Metni paragraf bloklarına ayırır + her bloğa font boyutu/ölçek ve başlık bayrağı atar
 function itemsToBlocks(items){
-  const blocks = []; let cur = null, lastY = null;
+  // 1) Aynı satırdaki parçaları birleştir (satır = yakın y)
+  const lines = []; let cur = null, lastY = null;
   for (const it of items){
     if (typeof it.str !== "string") continue;
     const y = it.transform ? it.transform[5] : null;
+    const x = it.transform ? it.transform[4] : null;
     const sz = it.transform ? Math.abs(it.transform[3]) : 0;
-    const brk = lastY !== null && y !== null && Math.abs(lastY - y) > 14;
-    if (!cur || brk){ if (cur && cur.text.trim()) blocks.push(cur); cur = { text: "", sizes: [] }; }
+    const sameLine = cur && lastY !== null && y !== null && Math.abs(lastY - y) <= 4;
+    if (!sameLine){ if (cur && cur.text.trim()) lines.push(cur); cur = { text: "", sizes: [], y, x }; }
     if (cur.text && !cur.text.endsWith(" ")) cur.text += " ";
     cur.text += it.str; if (sz > 0) cur.sizes.push(sz); if (y !== null) lastY = y;
   }
-  if (cur && cur.text.trim()) blocks.push(cur);
+  if (cur && cur.text.trim()) lines.push(cur);
+  for (const l of lines){ l.text = l.text.replace(/\s+/g," ").trim(); l.size = median(l.sizes) || 12; delete l.sizes; }
+  // 2) Tipik satır aralığı + sol kenar (paragraf girintisi için)
+  const gaps = [];
+  for (let i = 1; i < lines.length; i++){ const g = lines[i-1].y - lines[i].y; if (g > 0 && g < 400) gaps.push(g); }
+  const lineGap = median(gaps) || 14;
+  const leftEdge = median(lines.map((l) => l.x).filter((v) => typeof v === "number"));
+  // 3) Satırları PARAGRAFLARA birleştir — cümleler bölünmesin (hizalama tam cümle ister)
+  const blocks = []; let blk = null;
+  for (let i = 0; i < lines.length; i++){
+    const l = lines[i], prev = i > 0 ? lines[i-1] : null;
+    let brk = !blk;
+    if (prev){
+      const gap = prev.y - l.y;
+      if (gap < 0 || gap > lineGap * 1.8) brk = true;                 // büyük boşluk / yeni sütun-sayfa
+      else if (Math.abs(l.size - prev.size) > 0.8) brk = true;        // başlık ↔ gövde geçişi
+      else if (leftEdge > 0 && l.x - leftEdge > Math.max(6, l.size*0.5) && /[.!?…"'’”)]\s*$/.test(prev.text)) brk = true; // girintili yeni paragraf
+    }
+    if (brk){ if (blk && blk.text.trim()) blocks.push(blk); blk = { text: l.text, sizes: [l.size] }; }
+    else { blk.text += " " + l.text; blk.sizes.push(l.size); }
+  }
+  if (blk && blk.text.trim()) blocks.push(blk);
+  // 4) Tire-birleştirme + temizlik + başlık/ölçek
   for (const b of blocks){ b.text=b.text.replace(/(\p{L})-\s+(\p{L})/gu,"$1$2").replace(/\s+/g," ").trim(); b.size = median(b.sizes) || 12; delete b.sizes; }
   const body = median(blocks.map((b) => b.size)) || 12;
   for (const b of blocks){ b.scale = b.size / body; b.heading = b.size >= body * 1.2 && b.text.length < 120; }
