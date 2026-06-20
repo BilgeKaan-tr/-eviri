@@ -21,11 +21,20 @@ const CONCURRENCY = parseInt(process.env.CONCURRENCY || "4", 10); // paralel say
 
 // İstemciden gelebilecek geçerli model kimlikleri (public/index.html ile eşleşir).
 // Listede olmayan değer yok sayılır; translate.js varsayılanı kullanılır.
-const ALLOWED_MODELS = new Set([
+export const ALLOWED_MODELS = new Set([
   "claude-sonnet-4-6",
   "claude-opus-4-8",
   "claude-haiku-4-5-20251001",
 ]);
+
+// İstemciden gelen model değerini doğrular: geçerliyse döndürür, değilse
+// undefined (translate.js varsayılanına düşülür). Saf fonksiyon: birim test edilir.
+export function resolveModel(model) {
+  return ALLOWED_MODELS.has(model) ? model : undefined;
+}
+
+// Tamamlanan/iptal/hatalı işlerin bellekte kalış süresi (sweeper temizler).
+const JOB_TTL = parseInt(process.env.JOB_TTL_MS || "1800000", 10); // 30 dk
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -83,8 +92,8 @@ app.post("/api/upload", (req, res) => {
     const jobId = crypto.randomUUID();
     const baseName = (req.file.originalname || "belge")
       .replace(/\.pdf$/i, "").replace(/[\/\\:*?"<>| -]/g, "_").slice(0, 80) || "belge";
-    const model = ALLOWED_MODELS.has(req.body && req.body.model) ? req.body.model : undefined;
-    const job = { events: [], listeners: [], result: null, done: false, error: null, cancelled: false, name: `${baseName}-turkce.pdf` };
+    const model = resolveModel(req.body && req.body.model);
+    const job = { events: [], listeners: [], result: null, done: false, error: null, cancelled: false, name: `${baseName}-turkce.pdf`, createdAt: Date.now() };
     jobs.set(jobId, job);
     activeJobs++;
     processJob(jobId, buf, model)
@@ -131,6 +140,17 @@ app.post("/api/cancel/:jobId", (req, res) => {
 function emit(job, event) {
   job.events.push(event);
   for (const l of job.listeners) l(event);
+}
+
+// Bellek temizliği: TTL'i dolan işleri ve süresi geçmiş hız-sınırı kayıtlarını
+// kaldırır. İndirilmeyen/hatalı işler aksi halde sonsuza dek bellekte kalırdı.
+export function sweep(now = Date.now()) {
+  for (const [id, job] of jobs) {
+    if (now - job.createdAt > JOB_TTL) jobs.delete(id);
+  }
+  for (const [ip, h] of hits) {
+    if (now > h.reset) hits.delete(ip);
+  }
 }
 
 // Sınırlı eşzamanlılıkla havuz (paralel sayfa çevirisi)
@@ -189,16 +209,29 @@ async function processJob(jobId, buffer, model) {
   emit(job, { type: "done", total });
 }
 
-// Sunucuyu baslat (fontlarin var oldugundan emin olarak)
-ensureFonts()
-  .then(() => {
-    const key = process.env.ANTHROPIC_API_KEY;
-    if (!key) console.warn("UYARI: ANTHROPIC_API_KEY tanimli degil. .env dosyasi olusturun.");
-    else if (!/^sk-ant-/.test(key)) console.warn("UYARI: ANTHROPIC_API_KEY 'sk-ant-' ile başlamıyor; format hatalı olabilir.");
-    const server = app.listen(PORT, () => console.log(`PDF Ceviri calisiyor:  http://localhost:${PORT}`));
-    // Düzgün kapanış: aktif bağlantıları boşalt
-    for (const sig of ["SIGTERM", "SIGINT"]) {
-      process.on(sig, () => { console.log(`\n${sig} alındı, kapanılıyor...`); server.close(() => process.exit(0)); setTimeout(() => process.exit(0), 5000); });
-    }
-  })
-  .catch((err) => { console.error("Baslatma hatasi:", err.message); process.exit(1); });
+export { app };
+
+// Sunucuyu baslat (fontlarin var oldugundan emin olarak).
+// Yalnızca doğrudan çalıştırıldığında; modül olarak import edilince (testler) atlanır.
+function start() {
+  return ensureFonts()
+    .then(() => {
+      const key = process.env.ANTHROPIC_API_KEY;
+      if (!key) console.warn("UYARI: ANTHROPIC_API_KEY tanimli degil. .env dosyasi olusturun.");
+      else if (!/^sk-ant-/.test(key)) console.warn("UYARI: ANTHROPIC_API_KEY 'sk-ant-' ile başlamıyor; format hatalı olabilir.");
+      const server = app.listen(PORT, () => console.log(`PDF Ceviri calisiyor:  http://localhost:${PORT}`));
+      // Süresi dolan işleri/IP kayıtlarını periyodik temizle (5 dk'da bir).
+      const sweeper = setInterval(() => sweep(), 5 * 60_000);
+      sweeper.unref?.();
+      // Düzgün kapanış: aktif bağlantıları boşalt
+      for (const sig of ["SIGTERM", "SIGINT"]) {
+        process.on(sig, () => { console.log(`\n${sig} alındı, kapanılıyor...`); clearInterval(sweeper); server.close(() => process.exit(0)); setTimeout(() => process.exit(0), 5000); });
+      }
+      return server;
+    })
+    .catch((err) => { console.error("Baslatma hatasi:", err.message); process.exit(1); });
+}
+
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  start();
+}

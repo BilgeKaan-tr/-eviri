@@ -34,16 +34,19 @@ const median = (a) => { if (!a.length) return 0; const s = [...a].sort((x, y) =>
 // boyutu/olcek ve baslik bayragi atar. Tire ile bolunen kelimeler birlestirilir.
 function itemsToBlocks(items) {
   const blocks = [];
-  let cur = null, lastY = null;
+  let cur = null, lastY = null, lastSz = 12;
   for (const it of items) {
     if (typeof it.str !== "string") continue;
     const y = it.transform ? it.transform[5] : null;
     const sz = it.transform ? Math.abs(it.transform[3]) : 0;
-    const brk = lastY !== null && y !== null && Math.abs(lastY - y) > 14;
+    // Eşik font boyutuna oranlı: küçük gövde için ~14, büyük başlıklarda büyür.
+    // Böylece çok satırlı başlıklar yanlışlıkla ayrı bloklara bölünmez.
+    const gap = Math.max(14, (lastSz || 12) * 1.2);
+    const brk = lastY !== null && y !== null && Math.abs(lastY - y) > gap;
     if (!cur || brk) { if (cur && cur.text.trim()) blocks.push(cur); cur = { text: "", sizes: [] }; }
     if (cur.text && !cur.text.endsWith(" ")) cur.text += " ";
     cur.text += it.str;
-    if (sz > 0) cur.sizes.push(sz);
+    if (sz > 0) { cur.sizes.push(sz); lastSz = sz; }
     if (y !== null) lastY = y;
   }
   if (cur && cur.text.trim()) blocks.push(cur);
