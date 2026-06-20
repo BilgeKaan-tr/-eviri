@@ -57,7 +57,7 @@
   <div id="modelCard" class="card">
     <span class="badge" id="deviceBadge">cihaz kontrol ediliyor...</span>
     <p class="model-text">
-      Çeviri modeli (Meta NLLB-200) <b>ilk seferde bir kez</b> indirilir
+      Çeviri modeli (Meta M2M-100) <b>ilk seferde bir kez</b> indirilir
       (~300–600 MB) ve tarayıcınızda saklanır. Sonrasında <b>internetsiz</b>,
       tamamen cihazınızda çalışır.
     </p>
@@ -111,7 +111,7 @@
     <button type="button" id="errorResetBtn" class="btn btn-ghost">Tekrar Dene</button>
   </section>
 
-  <footer><p>Hiçbir veriniz cihazınızdan çıkmaz · Çevrimdışı çalışır · Meta NLLB-200</p></footer>
+  <footer><p>Hiçbir veriniz cihazınızdan çıkmaz · Çevrimdışı çalışır · Meta M2M-100 (MIT)</p></footer>
 </main>
 
 <!-- PDF kutuphaneleri (CDN, UMD global) -->
@@ -128,27 +128,29 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
 
 const { PDFDocument, rgb } = PDFLib;
 const TRANSFORMERS_URL = "https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.5.2";
-const MODEL_ID = "Xenova/nllb-200-distilled-600M";
-const TGT_LANG = "tur_Latn";
+// M2M-100 (Meta, MIT lisansı) — ticari kullanıma uygun, tek model ile 100 dilden
+// Türkçe'ye. ISO 639-1 dil kodları kullanır (örn. "en", "tr").
+const MODEL_ID = "Xenova/m2m100_418M";
+const TGT_LANG = "tr";
 const MAX_CHARS = 600;
 
-// franc (ISO 639-3) -> NLLB FLORES-200
+// franc (ISO 639-3) -> M2M-100 (ISO 639-1)
 const LANG_MAP = {
-  eng:"eng_Latn", tur:"tur_Latn", deu:"deu_Latn", fra:"fra_Latn", spa:"spa_Latn",
-  ita:"ita_Latn", por:"por_Latn", rus:"rus_Cyrl", ara:"arb_Arab", arb:"arb_Arab",
-  cmn:"zho_Hans", zho:"zho_Hans", jpn:"jpn_Jpan", kor:"kor_Hang", nld:"nld_Latn",
-  pol:"pol_Latn", ukr:"ukr_Cyrl", ron:"ron_Latn", ell:"ell_Grek", heb:"heb_Hebr",
-  hin:"hin_Deva", pes:"pes_Arab", fas:"pes_Arab", swe:"swe_Latn", nob:"nob_Latn",
-  nor:"nob_Latn", dan:"dan_Latn", fin:"fin_Latn", ces:"ces_Latn", hun:"hun_Latn",
-  bul:"bul_Cyrl", srp:"srp_Cyrl", hrv:"hrv_Latn", slk:"slk_Latn", slv:"slv_Latn",
-  lit:"lit_Latn", lav:"lvs_Latn", lvs:"lvs_Latn", est:"est_Latn", ind:"ind_Latn",
-  vie:"vie_Latn", tha:"tha_Thai", msa:"zsm_Latn", zsm:"zsm_Latn", aze:"azj_Latn"
+  eng:"en", tur:"tr", deu:"de", fra:"fr", spa:"es",
+  ita:"it", por:"pt", rus:"ru", ara:"ar", arb:"ar",
+  cmn:"zh", zho:"zh", jpn:"ja", kor:"ko", nld:"nl",
+  pol:"pl", ukr:"uk", ron:"ro", ell:"el", heb:"he",
+  hin:"hi", pes:"fa", fas:"fa", swe:"sv", nob:"no",
+  nor:"no", dan:"da", fin:"fi", ces:"cs", hun:"hu",
+  bul:"bg", srp:"sr", hrv:"hr", slk:"sk", slv:"sl",
+  lit:"lt", lav:"lv", lvs:"lv", est:"et", ind:"id",
+  vie:"vi", tha:"th", msa:"ms", zsm:"ms", aze:"az"
 };
 function detectLang(text, fallback){
   try{
     const code = franc(text||"", {minLength:10});
-    return LANG_MAP[code] || fallback || "eng_Latn";
-  }catch{ return fallback || "eng_Latn"; }
+    return LANG_MAP[code] || fallback || "en";
+  }catch{ return fallback || "en"; }
 }
 
 // ====== Ceviri motoru: once Web Worker, olmazsa ana is parcacigi ======
@@ -352,7 +354,7 @@ async function handleFile(file){
     const pages = await extractPdf(buf);
 
     // Belge geneli dil tahmini (kisa sayfalar icin yedek)
-    const docLang = detectLang(pages.map(p=>p.text).join(" ").slice(0,4000), "eng_Latn");
+    const docLang = detectLang(pages.map(p=>p.text).join(" ").slice(0,4000), "en");
 
     // Paragraf yapisini koruyarak isleri cikar -> global ilerleme + ETA.
     // pageBuckets[pi][pj][ci] = pi. sayfa, pj. paragraf, ci. alt-parca cevirisi.
@@ -374,7 +376,7 @@ async function handleFile(file){
 
     for(const job of jobs){
       if(cancelRequested){ reset(); return; }
-      const key = job.src + " " + job.text;
+      const key = job.src + "\u0000" + job.text;
       let tr = cache.get(key);
       if(tr === undefined){
         try { tr = await Engine.translate(job.text, job.src); }
