@@ -56,8 +56,9 @@ export function tuneWeights(model, dev, opts = {}) {
     wordBonus: [1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0],
     distortionWeight: [0.1, 0.2, 0.25, 0.4, 0.6, 1.0],
     lexWeight: [0, 0.25, 0.5, 1.0, 1.5, 2.0],
+    invWeight: [0, 0.1, 0.2, 0.3, 0.5, 0.7, 1.0],
   };
-  const w = { lmWeight: 0.7, wordBonus: 2.5, distortionWeight: 0.25, lexWeight: 0.5, reorder: true, ...(opts.init || {}) };
+  const w = { lmWeight: 0.7, wordBonus: 2.5, distortionWeight: 0.25, lexWeight: 0.5, invWeight: 0.3, reorder: true, ...(opts.init || {}) };
   let best = evaluate(model, dev, w);
   const startBleu = best;
   const passes = opts.passes || 3;
@@ -73,5 +74,5 @@ export function tuneWeights(model, dev, opts = {}) {
     }
     if (!improved) break;
   }
-  return { weights: { lmWeight: w.lmWeight, wordBonus: w.wordBonus, distortionWeight: w.distortionWeight, lexWeight: w.lexWeight }, bleu: best, startBleu };
+  return { weights: { lmWeight: w.lmWeight, wordBonus: w.wordBonus, distortionWeight: w.distortionWeight, lexWeight: w.lexWeight, invWeight: w.invWeight }, bleu: best, startBleu };
 }

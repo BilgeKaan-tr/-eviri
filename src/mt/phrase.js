@@ -143,7 +143,7 @@ const MAX_SENT_LEN = 250; // aşırı uzun (hatalı hizalanmış) cümleleri ele
 export function buildPhraseModel(parallel, opts = {}) {
   const srcLang = opts.srcLang || "en";
   const iterations = opts.iterations || 12;
-  const maxLen = opts.maxPhrase || 4;
+  const maxLen = opts.maxPhrase || 7;
   const minCount = opts.minCount || 1;   // büyük veride 2-3 yapın
   const maxCand = opts.maxCand || 20;    // kaynak öbek başına aday sayısı
 
@@ -212,22 +212,36 @@ export function mergeDictionary(model, entries, weight = 2) {
   return model;
 }
 
-// Sayım değerinden [count, lex] oku (eski biçimde değer salt sayıdır)
+// Sayım değerinden [count, lex, invPhi] oku (eski biçim salt sayı veya [c,lex])
 const cOf = (v) => (Array.isArray(v) ? v[0] : v);
-const lexOf = (v) => (Array.isArray(v) ? v[1] : 1);
+const lexOf = (v) => (Array.isArray(v) ? (v[1] ?? 1) : 1);
+const invOf = (v) => (Array.isArray(v) && v.length > 2 ? v[2] : 0.01);
 
-// Her aday için [φ, lex] üret. φ=count/total; lex=lexical güven (varsa).
+// Her aday için [φ(f̄|ē), lex(f̄|ē), φ(ē|f̄)] üret.
+// φ(ē|f̄) = ters öbek olasılığı: bu Türkçe öbeği gördüğümüzde kaynak öbeği
+// ne kadar destekliyor? Ek ayırt edici güç sağlar (~1-2 BLEU).
 export function derivePtable(pcounts, scounts, { minCount = 1, maxCand = 20 } = {}) {
+  // Ters sayım: her hedef öbek (f̄) için toplam gözlem sayısı
+  const invScounts = new Map();
+  for (const [, mm] of pcounts) {
+    for (const [tgt, v] of mm) {
+      invScounts.set(tgt, (invScounts.get(tgt) || 0) + cOf(v));
+    }
+  }
   const ptable = new Map();
   for (const [src, mm] of pcounts) {
     const tot = scounts.get(src);
     const scored = [];
     for (const [tgt, v] of mm) {
       const c = cOf(v);
-      if (c >= minCount) scored.push([tgt, [c / tot, lexOf(v)]]);
+      if (c >= minCount) {
+        const phi = c / tot;
+        const invPhi = c / (invScounts.get(tgt) || 1);
+        scored.push([tgt, [phi, lexOf(v), invPhi]]);
+      }
     }
     if (!scored.length) continue;
-    scored.sort((a, b) => b[1][0] - a[1][0]); // φ'ye göre
+    scored.sort((a, b) => b[1][0] - a[1][0]);
     ptable.set(src, new Map(scored.slice(0, maxCand)));
   }
   return ptable;
@@ -269,7 +283,8 @@ export function decodePhrase(eTokens, model, opts = {}) {
   const { ptable, lm, maxPhrase } = model;
   // wordBonus: uretilen her hedef kelime icin odul. Dil modelinin negatif
   // log-olasiliklarini dengeler; olmazsa cozucu "hicbir sey uretmeme"yi secer.
-  const { beam = 30, lmWeight = 0.7, topK = 8, wordBonus = 2.5, lexWeight = 0.5 } = opts;
+  // invWeight: ters öbek olasılığı phi(e|f) ağırlığı.
+  const { beam = 30, lmWeight = 0.7, topK = 8, wordBonus = 2.5, lexWeight = 0.5, invWeight = 0.3 } = opts;
   const n = eTokens.length;
   const trie = model._trie || (model._trie = buildPhraseTrie(ptable));
   const beams = Array.from({ length: n + 1 }, () => []);
@@ -285,7 +300,8 @@ export function decodePhrase(eTokens, model, opts = {}) {
         for (const [tgtPhrase, pv] of options) {
           const words = tgtPhrase === "" ? [] : tgtPhrase.split(" ");
           let h2 = h.h2, h1 = h.h1;
-          let sc = h.score + Math.log(cOf(pv)) + lexWeight * Math.log(lexOf(pv));
+          let sc = h.score + Math.log(cOf(pv)) + lexWeight * Math.log(lexOf(pv))
+                 + invWeight * Math.log(invOf(pv));
           for (const w of words) { sc += lmWeight * lmScore3(lm, h2, h1, w) + wordBonus; h2 = h1; h1 = w; }
           beams[i + len].push({ seq: h.seq.concat(words), h2, h1, score: sc });
         }
@@ -347,7 +363,7 @@ export function decodePhraseReorder(eTokens, model, opts = {}) {
   const { ptable, lm, maxPhrase } = model;
   const {
     beam = 50, lmWeight = 0.7, topK = 8, wordBonus = 2.5, lexWeight = 0.5,
-    distortionLimit = 5, distortionWeight = 0.25,
+    distortionLimit = 5, distortionWeight = 0.25, invWeight = 0.3,
   } = opts;
   const n = eTokens.length;
   if (n === 0) return opts.returnScore ? { seq: [], score: 0 } : [];
@@ -390,7 +406,8 @@ export function decodePhraseReorder(eTokens, model, opts = {}) {
           for (const [tgtPhrase, pv] of options) {
             const words = tgtPhrase === "" ? [] : tgtPhrase.split(" ");
             let h2 = h.h2, h1 = h.h1;
-            let sc = h.score + Math.log(cOf(pv)) + lexWeight * Math.log(lexOf(pv)) - distortionWeight * Math.abs(i - h.lastEnd);
+            let sc = h.score + Math.log(cOf(pv)) + lexWeight * Math.log(lexOf(pv))
+                   + invWeight * Math.log(invOf(pv)) - distortionWeight * Math.abs(i - h.lastEnd);
             for (const w of words) { sc += lmWeight * lmScore3(lm, h2, h1, w) + wordBonus; h2 = h1; h1 = w; }
             stacks[k + len].push({ cov: h.cov | mask, lastEnd: i + len, h2, h1, seq: h.seq.concat(words), score: sc });
           }
@@ -428,7 +445,11 @@ export function serializePhrase(model) {
     scounts: [...model.scounts],
     lm: {
       uni: [...model.lm.uni], bi: [...model.lm.bi],
-      tri: model.lm.tri ? [...model.lm.tri] : [], V: model.lm.V, N: model.lm.N || 0,
+      tri: model.lm.tri ? [...model.lm.tri] : [],
+      biN1: model.lm.biN1 ? [...model.lm.biN1] : [],
+      triN1: model.lm.triN1 ? [...model.lm.triN1] : [],
+      V: model.lm.V, N: model.lm.N || 0,
+      wb: model.lm.wb || false,
     },
   });
 }
@@ -437,6 +458,9 @@ export function deserializePhrase(json) {
   const lm = {
     uni: new Map(o.lm.uni), bi: new Map(o.lm.bi),
     tri: new Map(o.lm.tri || []), V: o.lm.V, N: o.lm.N || 0,
+    biN1: new Map(o.lm.biN1 || []),
+    triN1: new Map(o.lm.triN1 || []),
+    wb: o.lm.wb || false,
   };
   // Yeni biçim: sayımlar. Eski biçim (ptable) ile de uyumlu.
   if (o.pcounts) {
@@ -448,7 +472,7 @@ export function deserializePhrase(json) {
       minCount: o.minCount || 1, maxCand: o.maxCand || 20,
       weights: o.weights || null,
       pcounts, scounts, lm, ptable,
-      _trie: buildPhraseTrie(ptable), // ön-kurulum: ilk çeviri gecikmesini önler
+      _trie: buildPhraseTrie(ptable),
     };
   }
   const ptable = new Map(o.ptable.map(([s, m]) => [s, new Map(m)]));

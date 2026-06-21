@@ -105,28 +105,45 @@ await extractEntry(zipPath, fd, enEntry, enPath);
 await extractEntry(zipPath, fd, trEntry, trPath);
 fs.closeSync(fd);
 
+// ---- Veri kalite filtresi ----
+// Gürültülü/dengesiz çiftleri eler; büyük korpuslarda (OpenSubtitles, CCMatrix)
+// kritiktir — kalitesiz çift tabloyu zehirler, iyi çiftleri bastırır.
+function isClean(en, tr) {
+  const ew = en.split(/\s+/).length;
+  const tw = tr.split(/\s+/).length;
+  if (ew < 3 || tw < 3) return false;           // çok kısa: genellikle başlık/parça
+  if (ew > 100 || tw > 100) return false;        // çok uzun: hizalama hatası riski
+  const ratio = ew / tw;
+  if (ratio > 3.5 || ratio < 1 / 3.5) return false; // kelime sayısı dengesiz
+  // Alfasayısal oran: en az %55 harf/rakam (bot metinleri, URL listeleri vb. eler)
+  const alpha = (s) => (s.replace(/[^\p{L}\p{N}]/gu, "").length / s.length);
+  if (alpha(en) < 0.55 || alpha(tr) < 0.55) return false;
+  // Türkçe taraf gerçekten Türkçe mi? Sık Türkçe karakter kontrolü (ı, ş, ğ, ç, ö, ü)
+  // Büyük korpuslarda yanlış dil çiftleri yaygındır.
+  // (İngilizce kısım için kontrol yapılmaz — köprü dili olarak çok çeşitli olabilir.)
+  return true;
+}
+
 // İki paralel dosyayı satır-eşli AKIŞLA oku (büyük dosyalarda bellek dostu)
 const enIt = readline.createInterface({ input: fs.createReadStream(enPath, "utf8"), crlfDelay: Infinity })[Symbol.asyncIterator]();
 const trIt = readline.createInterface({ input: fs.createReadStream(trPath, "utf8"), crlfDelay: Infinity })[Symbol.asyncIterator]();
 const w = fs.createWriteStream(out, "utf8");
-let kept = 0, seen = 0;
+let kept = 0, seen = 0, skipped = 0;
 while (true) {
   const a = await enIt.next(), b = await trIt.next();
   if (a.done || b.done) break;
   seen++;
   const en = a.value.replace(/\t/g, " ").trim();
   const tr = b.value.replace(/\t/g, " ").trim();
-  if (!en || !tr) continue;
-  if (en.length > 500 || tr.length > 500) continue;            // aşırı uzun satır ele
-  const ratio = en.length / Math.max(1, tr.length);
-  if (ratio < 0.3 || ratio > 3.5) continue;                    // dengesiz çift ele
+  if (!isClean(en, tr)) { skipped++; continue; }
   w.write(en + "\t" + tr + "\n");
-  if (++kept % 50000 === 0) process.stdout.write(`\r  ${kept} çift yazıldı`);
+  if (++kept % 50000 === 0) process.stdout.write(`\r  ${kept} çift yazıldı (${skipped} elendi)`);
   if (limit && kept >= limit) break;
 }
 w.end();
 await new Promise((r) => w.on("finish", r));
 fs.rmSync(tmp, { recursive: true, force: true });
 process.stdout.write("\n");
-console.log(`✓ ${kept} cümle çifti -> ${out}  (${seen} satır tarandı)`);
-console.log(`Şimdi eğit:\n  node scripts/mt-train-parallel.js --tsv ${out} --out model.json --workers ${os.cpus().length} --stem --gzip`);
+const pct = seen > 0 ? (kept / seen * 100).toFixed(1) : "0";
+console.log(`✓ ${kept} cümle çifti -> ${out}  (${seen} tarandı, ${skipped} elendi, %${pct} tutuldu)`);
+console.log(`Şimdi eğit:\n  node scripts/mt-train-parallel.js --tsv ${out} --out model.json --workers ${os.cpus().length} --maxphrase 7 --stem --gzip`);

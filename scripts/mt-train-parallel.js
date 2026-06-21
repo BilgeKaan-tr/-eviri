@@ -22,7 +22,7 @@ const out = arg("--out", "model.json");
 const opts = {
   srcLang: arg("--lang", "en"),
   iterations: parseInt(arg("--iter", "15"), 10),
-  maxPhrase: parseInt(arg("--maxphrase", "4"), 10),
+  maxPhrase: parseInt(arg("--maxphrase", "7"), 10),
   minCount: parseInt(arg("--mincount", "1"), 10),
   stem: has("--stem"),
 };
