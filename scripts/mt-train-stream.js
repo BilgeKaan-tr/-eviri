@@ -26,13 +26,26 @@ if (!tsv) { console.error("Hata: --tsv buyuk.tsv verin."); process.exit(1); }
 
 let running = null, batch = [], total = 0, batches = 0;
 const t0 = Date.now();
+const pruneMin = Math.max(2, opts.minCount || 2);
+
+// Birleşimden sonra düşük sayımlı öbekleri sil; belleği sınırlı tutar.
+function prunePcounts(pcounts) {
+  for (const [s, mm] of pcounts) {
+    for (const [t, v] of mm) {
+      if (v[0] < pruneMin) mm.delete(t);
+    }
+    if (mm.size === 0) pcounts.delete(s);
+  }
+}
 
 function foldBatch() {
   if (!batch.length) return;
   const m = buildPhraseModel(batch, opts);
   running = running ? mergeModels([running, m]) : m;
+  prunePcounts(running.pcounts);
   total += batch.length; batches++;
-  process.stdout.write(`\r  ${total} cümle · ${batches} grup işlendi`);
+  const phrases = running.pcounts.size;
+  process.stdout.write(`\r  ${total} cümle · ${batches} grup · ${phrases} kaynak öbek   `);
   batch = [];
 }
 
