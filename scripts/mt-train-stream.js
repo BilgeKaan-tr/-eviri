@@ -7,7 +7,11 @@
 import fs from "node:fs";
 import zlib from "node:zlib";
 import readline from "node:readline";
-import { buildPhraseModel, mergeModels, serializePhrase } from "../src/mt/phrase.js";
+import { createGzip } from "node:zlib";
+import { createWriteStream } from "node:fs";
+import { pipeline } from "node:stream/promises";
+import { Readable } from "node:stream";
+import { buildPhraseModel, mergeModels } from "../src/mt/phrase.js";
 
 function arg(name, def) { const i = process.argv.indexOf(name); return i >= 0 ? process.argv[i + 1] : def; }
 const has = (n) => process.argv.includes(n);
@@ -23,6 +27,79 @@ const opts = {
   stem: has("--stem"),
 };
 if (!tsv) { console.error("Hata: --tsv buyuk.tsv verin."); process.exit(1); }
+
+// Modeli tek büyük string oluşturmadan doğrudan dosyaya (isteğe bağlı gzip) yazar.
+// JSON.stringify tek geçişli olduğundan 1 GB+ modeller V8 string sınırını aşar;
+// bu fonksiyon her girdiyi tek tek serileştirerek streame yazar.
+async function savePhraseStream(model, outPath, gzipped) {
+  const chunks = [];
+
+  function w(s) { chunks.push(Buffer.from(s, "utf8")); }
+
+  function writeMapIter(iter) {
+    let first = true;
+    for (const entry of iter) {
+      if (!first) w(",");
+      first = false;
+      // Her giriş küçük olduğundan stringify güvenlidir
+      w(JSON.stringify(entry));
+    }
+  }
+
+  w('{"srcLang":'); w(JSON.stringify(model.srcLang));
+  w(',"maxPhrase":'); w(String(model.maxPhrase));
+  w(',"minCount":'); w(String(model.minCount || 1));
+  w(',"maxCand":'); w(String(model.maxCand || 20));
+  w(',"weights":'); w(JSON.stringify(model.weights || null));
+
+  // pcounts: Map<src, Map<tgt, [count, lex]>>
+  w(',"pcounts":[');
+  let firstSrc = true;
+  for (const [s, mm] of model.pcounts) {
+    if (!firstSrc) w(",");
+    firstSrc = false;
+    w(JSON.stringify([s, [...mm]]));
+  }
+  w(']');
+
+  // scounts
+  w(',"scounts":[');
+  let firstSc = true;
+  for (const entry of model.scounts) {
+    if (!firstSc) w(",");
+    firstSc = false;
+    w(JSON.stringify(entry));
+  }
+  w(']');
+
+  // lm
+  w(',"lm":{');
+  w('"uni":['); writeMapIter(model.lm.uni); w(']');
+  w(',"bi":['); writeMapIter(model.lm.bi); w(']');
+  w(',"tri":['); writeMapIter(model.lm.tri || []); w(']');
+  w(',"biN1":['); writeMapIter(model.lm.biN1 || []); w(']');
+  w(',"triN1":['); writeMapIter(model.lm.triN1 || []); w(']');
+  w(',"V":'); w(String(model.lm.V));
+  w(',"N":'); w(String(model.lm.N || 0));
+  w(',"wb":'); w(model.lm.wb ? "true" : "false");
+  w('}}');
+
+  const buf = Buffer.concat(chunks);
+  const ws = createWriteStream(outPath);
+  if (gzipped) {
+    const gz = createGzip({ level: 9 });
+    gz.pipe(ws);
+    await new Promise((res, rej) => {
+      gz.on("error", rej); ws.on("error", rej); ws.on("finish", res);
+      gz.end(buf);
+    });
+  } else {
+    await new Promise((res, rej) => {
+      ws.on("error", rej); ws.on("finish", res);
+      ws.end(buf);
+    });
+  }
+}
 
 let running = null, batch = [], total = 0, batches = 0;
 const t0 = Date.now();
@@ -62,9 +139,10 @@ foldBatch();
 process.stdout.write("\n");
 
 if (!running) { console.error("Hata: cümle çifti yok."); process.exit(1); }
-const json = serializePhrase(running);
+
 let outP = out;
-if (has("--gzip")) { if (!outP.endsWith(".gz")) outP += ".gz"; fs.writeFileSync(outP, zlib.gzipSync(json, { level: 9 })); }
-else fs.writeFileSync(outP, json);
+const gzipped = has("--gzip");
+if (gzipped && !outP.endsWith(".gz")) outP += ".gz";
+await savePhraseStream(running, outP, gzipped);
 const kb = Math.round(fs.statSync(outP).size / 1024);
 console.log(`✓ ${outP} (${kb} KB) · ${running.pcounts.size} öbek · ${total} cümle · ${((Date.now() - t0) / 1000).toFixed(1)} sn`);
