@@ -10,10 +10,10 @@
     <main class="app">
       <header>
         <h1>📄 PDF Çeviri</h1>
-        <p class="subtitle">PDF dosyanızı yükleyin, tamamını Türkçe'ye çevirelim.</p>
+        <p class="subtitle">PDF veya metin — tamamını Türkçe'ye çevirelim.</p>
       </header>
 
-      <div class="status" style="margin-bottom:16px;text-align:left;padding:14px 18px">
+      <div id="modelRow" class="status" style="margin-bottom:16px;text-align:left;padding:14px 18px">
         <label style="font-size:13px;color:var(--muted)">Model (kalite/hız):
           <select id="model" style="margin-left:8px;background:#232733;border:1px solid var(--border);color:var(--text);padding:6px 8px;border-radius:8px">
             <option value="claude-sonnet-4-6">Sonnet — Denge (önerilen)</option>
@@ -23,44 +23,70 @@
         </label>
       </div>
 
-      <section id="dropzone" class="dropzone">
-        <input type="file" id="fileInput" accept="application/pdf" hidden />
-        <div class="dz-inner">
-          <div class="dz-icon">⬆️</div>
-          <p class="dz-text">PDF dosyasını buraya sürükleyin</p>
-          <p class="dz-or">veya</p>
-          <button type="button" id="browseBtn" class="btn">Dosya Seç</button>
-          <p class="dz-hint">En fazla 50 MB · Kaynak dil otomatik algılanır</p>
-        </div>
-      </section>
+      <!-- Sekme çubuğu -->
+      <div class="tabs">
+        <button class="tab active" data-tab="pdf">📄 PDF</button>
+        <button class="tab" data-tab="text">✏️ Metin</button>
+      </div>
 
-      <section id="status" class="status hidden">
-        <div class="file-row">
-          <span id="fileName" class="file-name"></span>
-          <span id="phaseLabel" class="phase"></span>
-        </div>
-        <div class="progress-bar">
-          <div id="progressFill" class="progress-fill"></div>
-        </div>
-        <p id="progressText" class="progress-text">Hazırlanıyor...</p>
-        <button type="button" id="cancelBtn" class="btn btn-ghost" style="margin-top:14px">İptal Et</button>
-      </section>
+      <!-- PDF sekmesi -->
+      <div id="tab-pdf">
+        <section id="dropzone" class="dropzone">
+          <input type="file" id="fileInput" accept="application/pdf" hidden />
+          <div class="dz-inner">
+            <div class="dz-icon">⬆️</div>
+            <p class="dz-text">PDF dosyasını buraya sürükleyin</p>
+            <p class="dz-or">veya</p>
+            <button type="button" id="browseBtn" class="btn">Dosya Seç</button>
+            <p class="dz-hint">En fazla 50 MB · Kaynak dil otomatik algılanır</p>
+          </div>
+        </section>
 
-      <section id="result" class="result hidden">
-        <div class="result-icon">✅</div>
-        <p class="result-text">Çeviri tamamlandı!</p>
-        <a id="downloadLink" class="btn btn-primary" download>Çevrilmiş PDF'i İndir</a>
-        <button type="button" id="resetBtn" class="btn btn-ghost">Yeni Dosya</button>
-      </section>
+        <section id="status" class="status hidden">
+          <div class="file-row">
+            <span id="fileName" class="file-name"></span>
+            <span id="phaseLabel" class="phase"></span>
+          </div>
+          <div class="progress-bar">
+            <div id="progressFill" class="progress-fill"></div>
+          </div>
+          <p id="progressText" class="progress-text">Hazırlanıyor...</p>
+          <button type="button" id="cancelBtn" class="btn btn-ghost" style="margin-top:14px">İptal Et</button>
+        </section>
 
-      <section id="error" class="error hidden">
-        <div class="result-icon">⚠️</div>
-        <p id="errorText" class="result-text"></p>
-        <button type="button" id="errorResetBtn" class="btn btn-ghost">Tekrar Dene</button>
-      </section>
+        <section id="result" class="result hidden">
+          <div class="result-icon">✅</div>
+          <p class="result-text">Çeviri tamamlandı!</p>
+          <a id="downloadLink" class="btn btn-primary" download>Çevrilmiş PDF'i İndir</a>
+          <button type="button" id="resetBtn" class="btn btn-ghost">Yeni Dosya</button>
+        </section>
+
+        <section id="error" class="error hidden">
+          <div class="result-icon">⚠️</div>
+          <p id="errorText" class="result-text"></p>
+          <button type="button" id="errorResetBtn" class="btn btn-ghost">Tekrar Dene</button>
+        </section>
+      </div>
+
+      <!-- Metin sekmesi -->
+      <div id="tab-text" class="hidden">
+        <section class="text-translate-box">
+          <textarea id="textInput" class="text-area" placeholder="Çevrilecek metni buraya yazın veya yapıştırın..." rows="8" maxlength="20000"></textarea>
+          <div class="text-char-row">
+            <span id="charCount" class="char-count">0 / 20.000</span>
+            <button type="button" id="translateTextBtn" class="btn btn-primary">Çevir</button>
+          </div>
+          <div id="textSpinner" class="text-spinner hidden">Çevriliyor...</div>
+          <textarea id="textOutput" class="text-area" placeholder="Çeviri burada görünecek..." rows="8" readonly></textarea>
+          <div class="text-copy-row hidden" id="copyRow">
+            <button type="button" id="copyBtn" class="btn">Kopyala</button>
+            <span id="copyOk" class="copy-ok hidden">Kopyalandı!</span>
+          </div>
+        </section>
+      </div>
 
       <footer>
-        <p>Claude API ile güçlendirilmiştir · Türkçe karakter destekli</p>
+        <p id="footerMode">Türkçe karakter destekli</p>
         <p style="font-size:11px;margin-top:6px">🔒 Gizlilik: dosyanız yalnızca çeviri için işlenir, indirildikten ~60 sn sonra sunucu belleğinden silinir; kalıcı olarak saklanmaz.</p>
       </footer>
     </main>

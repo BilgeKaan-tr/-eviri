@@ -199,3 +199,88 @@ footer {
 .hidden {
   display: none;
 }
+
+/* Sekmeler */
+.tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.tab {
+  flex: 1;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--card);
+  color: var(--muted);
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.tab.active {
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  color: white;
+  border-color: transparent;
+}
+
+/* Metin çeviri kutusu */
+.text-translate-box {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.text-area {
+  width: 100%;
+  background: #0f1115;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text);
+  font-size: 14px;
+  font-family: inherit;
+  padding: 12px;
+  resize: vertical;
+  line-height: 1.5;
+}
+
+.text-area:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.text-char-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.char-count {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.text-spinner {
+  text-align: center;
+  color: var(--muted);
+  font-size: 14px;
+  padding: 4px 0;
+}
+
+.text-copy-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.copy-ok {
+  color: var(--ok);
+  font-size: 13px;
+  font-weight: 600;
+}

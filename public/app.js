@@ -1,4 +1,29 @@
-// Istemci tarafi: dosya secimi/surukleme, yukleme, ilerleme (SSE), indirme.
+// Istemci tarafi: dosya secimi/surukleme, yukleme, ilerleme (SSE), indirme + metin cevirisi.
+
+// --- Sunucu modu bilgisi ---
+fetch("/api/info").then(r => r.json()).then(({ mode }) => {
+  const modelRow = document.getElementById("modelRow");
+  const footerMode = document.getElementById("footerMode");
+  if (mode === "smt") {
+    if (modelRow) modelRow.style.display = "none";
+    if (footerMode) footerMode.textContent = "Kendi SMT motoruyla güçlendirilmiştir";
+  } else {
+    if (footerMode) footerMode.textContent = "Claude API ile güçlendirilmiştir · Türkçe karakter destekli";
+  }
+}).catch(() => {});
+
+// --- Sekme sistemi ---
+const tabs = document.querySelectorAll(".tab");
+tabs.forEach(tab => {
+  tab.addEventListener("click", () => {
+    tabs.forEach(t => t.classList.remove("active"));
+    tab.classList.add("active");
+    document.getElementById("tab-pdf").classList.toggle("hidden", tab.dataset.tab !== "pdf");
+    document.getElementById("tab-text").classList.toggle("hidden", tab.dataset.tab !== "text");
+  });
+});
+
+// --- PDF sekmesi ---
 const dropzone = document.getElementById("dropzone");
 const fileInput = document.getElementById("fileInput");
 const browseBtn = document.getElementById("browseBtn");
@@ -98,7 +123,7 @@ async function handleFile(file) {
     }
     const { jobId } = await res.json();
     currentJobId = jobId;
-    sessionStorage.setItem("jobId", jobId); // sayfa yenilenince yeniden bağlan
+    sessionStorage.setItem("jobId", jobId);
     listenProgress(jobId);
   } catch (err) {
     fail(err.message);
@@ -118,7 +143,6 @@ function listenProgress(jobId) {
         progressText.textContent = "Çeviri başlıyor...";
         break;
       case "progress": {
-        // Karakter-ağırlıklı pct (varsa) daha doğru; yoksa sayfa oranı
         const pct = ev.pct != null ? ev.pct : Math.round(((ev.page - 1) / ev.total) * 100);
         progressFill.style.width = pct + "%";
         phaseLabel.textContent = `${ev.page} / ${ev.total} sayfa · %${pct}`;
@@ -141,7 +165,6 @@ function listenProgress(jobId) {
   };
   es.onerror = () => {
     es.close();
-    // done/error zaten gelmediyse genel hata goster.
     if (!resultEl.classList.contains("hidden")) return;
     if (errorEl.classList.contains("hidden") && statusEl.classList.contains("hidden")) return;
   };
@@ -156,3 +179,55 @@ if (pending) {
   show(statusEl);
   listenProgress(pending);
 }
+
+// --- Metin sekmesi ---
+const textInput = document.getElementById("textInput");
+const textOutput = document.getElementById("textOutput");
+const translateTextBtn = document.getElementById("translateTextBtn");
+const textSpinner = document.getElementById("textSpinner");
+const charCount = document.getElementById("charCount");
+const copyBtn = document.getElementById("copyBtn");
+const copyRow = document.getElementById("copyRow");
+const copyOk = document.getElementById("copyOk");
+
+textInput.addEventListener("input", () => {
+  charCount.textContent = `${textInput.value.length.toLocaleString("tr")} / 20.000`;
+});
+
+translateTextBtn.addEventListener("click", async () => {
+  const text = textInput.value.trim();
+  if (!text) return;
+  translateTextBtn.disabled = true;
+  textSpinner.classList.remove("hidden");
+  textOutput.value = "";
+  copyRow.classList.add("hidden");
+  copyOk.classList.add("hidden");
+
+  try {
+    const body = { text };
+    if (modelSel && modelSel.closest("#modelRow") && !document.getElementById("modelRow").style.display.includes("none")) {
+      body.model = modelSel.value;
+    }
+    const res = await fetch("/api/translate-text", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Çeviri hatası.");
+    textOutput.value = data.result;
+    copyRow.classList.remove("hidden");
+  } catch (e) {
+    textOutput.value = "Hata: " + e.message;
+  } finally {
+    translateTextBtn.disabled = false;
+    textSpinner.classList.add("hidden");
+  }
+});
+
+copyBtn.addEventListener("click", () => {
+  navigator.clipboard.writeText(textOutput.value).then(() => {
+    copyOk.classList.remove("hidden");
+    setTimeout(() => copyOk.classList.add("hidden"), 2000);
+  });
+});
