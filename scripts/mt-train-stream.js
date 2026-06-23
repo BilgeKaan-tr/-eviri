@@ -140,6 +140,20 @@ process.stdout.write("\n");
 
 if (!running) { console.error("Hata: cümle çifti yok."); process.exit(1); }
 
+// LM kırpma: nadir bigram/trigramları sil → dosya küçülür, yükleme hızlanır.
+// 991k cümle → ~500 MB LM; kırpmayla ~30-50 MB'ye düşer, V8 limitini aşmaz.
+const lmPrune = Math.max(2, pruneMin);
+for (const [k, c] of running.lm.bi)  { if (c < lmPrune) running.lm.bi.delete(k); }
+for (const [k, c] of running.lm.tri) { if (c < lmPrune) running.lm.tri.delete(k); }
+// biN1 / triN1 yeniden hesapla (Witten-Bell için benzersiz sağ-bağlam sayısı)
+const biN1 = new Map();
+for (const k of running.lm.bi.keys())  { const s = k.indexOf(" ");  if (s>=0) { const l=k.slice(0,s);  biN1.set(l,(biN1.get(l)||0)+1); } }
+const triN1 = new Map();
+for (const k of running.lm.tri.keys()) { const s = k.lastIndexOf(" "); if (s>=0) { const l=k.slice(0,s); triN1.set(l,(triN1.get(l)||0)+1); } }
+running.lm.biN1 = biN1;
+running.lm.triN1 = triN1;
+console.log(`LM kırpıldı: ${running.lm.bi.size} bigram, ${running.lm.tri.size} trigram kaldı.`);
+
 let outP = out;
 const gzipped = has("--gzip");
 if (gzipped && !outP.endsWith(".gz")) outP += ".gz";
