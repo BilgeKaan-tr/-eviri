@@ -10,8 +10,6 @@ RUN npm ci --omit=dev
 
 COPY . .
 
-RUN node scripts/download-font.js
-
 ENV PORT=7860
 ENV USE_SMT=true
 ENV SMT_MODEL=/app/model.json.gz
