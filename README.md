@@ -1,3 +1,13 @@
+---
+title: PDF Türkçe Çeviri (SMT)
+emoji: 📄
+colorFrom: blue
+colorTo: red
+sdk: docker
+app_port: 7860
+pinned: false
+---
+
 # 📄 PDF Çeviri
 
 PDF dosyalarını **Türkçe'ye** çeviren, **tamamen bağımsız ve çevrimdışı**
