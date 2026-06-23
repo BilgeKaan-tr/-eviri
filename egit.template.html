@@ -56,6 +56,7 @@
     <div class="row">
       <label>EM turu <input type="number" id="iter" value="15" min="1" max="60" /></label>
       <label>maks. öbek <input type="number" id="maxphrase" value="4" min="1" max="8" /></label>
+      <label>min sayım <input type="number" id="mincount" value="2" min="1" max="9" title="Tüm korpusta bu sayıdan az görülen öbekleri ele (tekil gürültü). 2 önerilir; 1 = hiçbir şey atma." /></label>
       <label>çekirdek <input type="number" id="workers" value="0" min="0" max="32" title="0 = otomatik" /></label>
       <label><input type="checkbox" id="stem" /> Türkçe stem</label>
     </div>
@@ -150,7 +151,7 @@ self.onmessage = (e) => {
 const makeWorker = () => new Worker(URL.createObjectURL(new Blob([MT_BUNDLE + WORKER_HANDLER], { type: "text/javascript" })));
 
 const $ = (id) => document.getElementById(id);
-let model = null, modelJson = null, devPairs = null, baseJson = null, dictEntries = null;
+let model = null, modelJson = null, devPairs = null, baseModel = null, dictEntries = null;
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 const show = (el) => { for (const s of [dropzone, statusEl, resultEl, errorEl]) s.classList.add("hidden"); el.classList.remove("hidden"); };
 
@@ -176,7 +177,7 @@ async function gunzipMaybe(v){ if (typeof v === "string") return v; if (v && v[0
 
 clearModel.addEventListener("click", async () => {
   try { await idbDel("model"); } catch {}
-  model = null; modelJson = null; baseJson = null;
+  model = null; modelJson = null; baseModel = null;
   modelBadge.textContent = "model yok"; saveModel.classList.add("hidden"); clearModel.classList.add("hidden");
   dropzone.classList.add("disabled"); bleuBtn.disabled = true; tuneBtn.disabled = true;
 });
@@ -191,31 +192,51 @@ async function readModelFile(file){
   return new TextDecoder().decode(buf);
 }
 let tunedWeights = null, metaPairs = 0, metaPhrases = 0;
-// Temel modeli (baseJson) + sözlük + ayarlı ağırlıklarla nihai modeli kur.
+
+// Modeli AKIŞLI gzip Blob'una çevirir: serializePhraseChunks parçaları doğrudan
+// CompressionStream'e beslenir; tek bir dev JSON dizesi KURULMAZ. Böylece büyük
+// öbek tablosu V8'in ~512 MB azami dize sınırına takılmaz.
+async function modelToGzipBlob(m){
+  if (!("CompressionStream" in window)) {
+    return new Blob([MT.serializePhrase(m)], { type: "application/json" }); // eski tarayıcı
+  }
+  const it = MT.serializePhraseChunks(m);
+  const rs = new ReadableStream({ pull(c){ const r = it.next(); if (r.done) c.close(); else c.enqueue(r.value); } });
+  const gz = rs.pipeThrough(new TextEncoderStream()).pipeThrough(new CompressionStream("gzip"));
+  return await new Response(gz).blob();
+}
+
+// Temel modeli (baseModel) + sözlük + ayarlı ağırlıklarla nihai modeli kur.
 // Tek yerden türetildiği için sözlük/ağırlık asla iki kez uygulanmaz.
+// baseModel hiçbir zaman yeniden seri hale getirilmez (dev dize yok).
 async function finalize(){
-  model = MT.deserializePhrase(baseJson);
-  if (dictEntries && dictEntries.length) MT.mergeDictionary(model, dictEntries);
-  if (tunedWeights) model.weights = tunedWeights;
-  modelJson = MT.serializePhrase(model);
+  // Sözlük varsa sayımları kopyala (baseModel bozulmasın); yoksa doğrudan kullan.
+  if (dictEntries && dictEntries.length) {
+    model = MT.cloneModelCounts(baseModel);
+    MT.mergeDictionary(model, dictEntries);
+  } else {
+    model = baseModel;
+  }
+  model.weights = tunedWeights || model.weights || null;
   modelBadge.textContent = `✓ model hazır${metaPairs?` · ${metaPairs} cümle`:""}${metaPhrases?` · ${metaPhrases} öbek`:""}${dictEntries&&dictEntries.length?` · +${dictEntries.length} sözlük`:""}${tunedWeights?` · ayarlı`:""}`;
   dropzone.classList.remove("disabled");
   dropzone.querySelector(".dz-hint").textContent = "Kaynak → Türkçe";
-  bleuBtn.disabled = false; tuneBtn.disabled = false;
-  if ("CompressionStream" in window) {
-    const gz = new Blob([modelJson]).stream().pipeThrough(new CompressionStream("gzip"));
-    saveModel.href = URL.createObjectURL(await new Response(gz).blob());
-    saveModel.download = "model.json.gz"; saveModel.textContent = "modeli indir (.gz)";
-  } else {
-    saveModel.href = URL.createObjectURL(new Blob([modelJson], { type: "application/json" }));
-    saveModel.download = "model.json"; saveModel.textContent = "modeli indir";
-  }
+  bleuBtn.disabled = false;
+  // İndir + cihazda sakla: akışlı gzip (dev dize kurmadan)
+  const blob = await modelToGzipBlob(model);
+  saveModel.href = URL.createObjectURL(blob);
+  if ("CompressionStream" in window) { saveModel.download = "model.json.gz"; saveModel.textContent = "modeli indir (.gz)"; }
+  else { saveModel.download = "model.json"; saveModel.textContent = "modeli indir"; }
   saveModel.classList.remove("hidden");
   clearModel.classList.remove("hidden");
-  idbSet("model", await gzipBytes(modelJson)).catch(() => {}); // cihazda sakla
+  try { await idbSet("model", new Uint8Array(await blob.arrayBuffer())); } catch {} // cihazda sakla (gzip baytı)
+  // Ayar (tune) için JSON dizesi gerekir; çok büyük modelde dize kurulamaz →
+  // ayarı kapat ama eğitim/kaydetme yine çalışır.
+  try { modelJson = MT.serializePhrase(model); tuneBtn.disabled = false; }
+  catch { modelJson = null; tuneBtn.disabled = true; qualityText.textContent = "Model çok büyük: tarayıcı içi ayar (tune) devre dışı; ayar için CLI kullanın."; }
 }
-async function modelReady(json, pairs, phrases){
-  baseJson = json; metaPairs = pairs || 0; metaPhrases = phrases || 0; tunedWeights = null;
+async function modelReady(m, pairs, phrases){
+  baseModel = m; metaPairs = pairs || 0; metaPhrases = phrases || 0; tunedWeights = null;
   await finalize();
 }
 // Sözlük yükle: bilinmeyen kelimelerde kullanılacak kullanıcı sözlüğü
@@ -226,7 +247,7 @@ $("dictInput").addEventListener("change", async () => {
     if (!line.trim()) continue; const [s, t] = line.split("\t"); if (s && t) dictEntries.push({ src: s, tgt: t });
   }
   qualityText.textContent = `${dictEntries.length} sözlük girdisi yüklendi.`;
-  if (baseJson) await finalize(); // mevcut modele uygula (çift uygulanmaz)
+  if (baseModel) await finalize(); // mevcut modele uygula (çift uygulanmaz)
 });
 
 // Kitap dosyasından düz metin çıkar (.pdf ise pdf.js ile, değilse .txt olarak)
@@ -296,8 +317,23 @@ trainBtn.addEventListener("click", async () => {
       });
     });
     trainText.textContent = "parçalar birleştiriliyor...";
-    const merged = MT.mergeModels(jsons.map((j) => MT.deserializePhrase(j)));
-    await modelReady(MT.serializePhrase(merged), parallel.length, merged.ptable.size);
+    // Parçaları TEK TEK çöz + erit + serbest bırak (hepsini birden belleğe açma):
+    // her parça yalnızca sayım düzeyinde (lazy: trie/ptable kurulmaz) açılır,
+    // birleştirilince jsons[wi] boşaltılır. Büyük korpusta tepe bellek düşer.
+    function* lazyModels(){
+      for (let wi = 0; wi < jsons.length; wi++) {
+        const m = MT.deserializePhrase(jsons[wi], { lazy: true });
+        jsons[wi] = null; // serbest bırak
+        yield m;
+      }
+    }
+    const merged = MT.mergeModels(lazyModels());
+    // Tekil (tüm korpusta 1 kez görülen) öbekleri ele — Moses varsayılanı; öbek
+    // SAYISINI keyfî kırpmaz, yalnızca hizalama gürültüsünü atar (kalite ~aynı,
+    // tablo belirgin küçülür). minCount=1 ise hiçbir şey atılmaz.
+    const minCount = +$("mincount").value || 1;
+    if (minCount > 1) { trainText.textContent = "tekil öbekler eleniyor..."; MT.pruneCounts(merged, minCount); }
+    await modelReady(merged, parallel.length, merged.ptable.size);
     trainFill.style.width = "100%"; trainText.textContent = `✓ Eğitim bitti · ${parallel.length} cümle · ${merged.ptable.size} öbek`;
     trainBtn.disabled = false;
   } catch (err) { trainBtn.disabled = false; trainText.textContent = "Hata: " + (err.message || err); }
@@ -308,9 +344,10 @@ loadBtn.addEventListener("click", () => modelInput.click());
 modelInput.addEventListener("change", async () => {
   const f = modelInput.files[0]; if (!f) return;
   try {
-    const json = await readModelFile(f); const raw = JSON.parse(json);
-    if (!Array.isArray(raw.pcounts) && !Array.isArray(raw.ptable)) throw new Error("Geçersiz model.");
-    await modelReady(json);
+    const json = await readModelFile(f);
+    const m = MT.deserializePhrase(json);
+    if (!m.pcounts && !m.ptable) throw new Error("Geçersiz model.");
+    await modelReady(m);
   } catch (err) { modelBadge.textContent = "yüklenemedi: " + (err.message || err); }
 });
 
@@ -476,9 +513,9 @@ function breakLongWord(word, font, size, maxW, out){
     const v = await idbGet("model");
     if (!v) return;
     const json = await gunzipMaybe(v);
-    const raw = JSON.parse(json);
-    if (Array.isArray(raw.pcounts) || Array.isArray(raw.ptable)) {
-      await modelReady(json);
+    const m = MT.deserializePhrase(json);
+    if (m.pcounts || m.ptable) {
+      await modelReady(m);
       modelBadge.textContent = "✓ model cihazdan geri yüklendi · " + (model.ptable.size) + " öbek";
     }
   } catch {}

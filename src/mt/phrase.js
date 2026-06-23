@@ -239,9 +239,12 @@ export function mergeModels(models) {
   const pc = new Map(), sc = new Map();
   const uni = new Map(), bi = new Map(), tri = new Map();
   let N = 0, maxPhrase = 1;
-  const srcLang = models[0] ? models[0].srcLang : "en";
+  // models bir dizi YA DA üreteç (generator) olabilir: dizinli erişim yok ki
+  // parçalar tek tek eritilip serbest bırakılabilsin (tarayıcıda bellek tasarrufu).
+  let srcLang = "en", seenFirst = false;
   const addInto = (dst, src) => { for (const [k, c] of src) dst.set(k, (dst.get(k) || 0) + c); };
   for (const m of models) {
+    if (!seenFirst) { srcLang = m.srcLang || "en"; seenFirst = true; }
     for (const [src, mm] of m.pcounts) {
       let d = pc.get(src); if (!d) pc.set(src, (d = new Map()));
       for (const [tgt, v] of mm) {
@@ -417,22 +420,40 @@ export function translatePhrase(model, text, opts = {}) {
 }
 
 // ---- Modeli sakla / yükle ----
-export function serializePhrase(model) {
-  return JSON.stringify({
-    srcLang: model.srcLang,
-    maxPhrase: model.maxPhrase,
-    minCount: model.minCount || 1,
-    maxCand: model.maxCand || 20,
-    weights: model.weights || null,
-    pcounts: [...model.pcounts].map(([s, m]) => [s, [...m]]),
-    scounts: [...model.scounts],
-    lm: {
-      uni: [...model.lm.uni], bi: [...model.lm.bi],
-      tri: model.lm.tri ? [...model.lm.tri] : [], V: model.lm.V, N: model.lm.N || 0,
-    },
-  });
+// Modeli PARÇA PARÇA (akış) JSON metni olarak üretir. Tek bir dev dize KURMAZ;
+// bu yüzden V8'in ~512 MB azami dize sınırına takılmaz (büyük öbek tablosu).
+// Çıktı, serializePhrase ile BİREBİR aynı JSON'dur (parçalar birleştirilince).
+// Tarayıcıda CompressionStream'e doğrudan beslenir → gzip baytı (dize kurmadan).
+export function* serializePhraseChunks(model) {
+  yield "{" +
+    `"srcLang":${JSON.stringify(model.srcLang)}` +
+    `,"maxPhrase":${JSON.stringify(model.maxPhrase)}` +
+    `,"minCount":${JSON.stringify(model.minCount || 1)}` +
+    `,"maxCand":${JSON.stringify(model.maxCand || 20)}` +
+    `,"weights":${JSON.stringify(model.weights || null)}` +
+    `,"pcounts":[`;
+  let first = true;
+  for (const [s, m] of model.pcounts) {
+    yield (first ? "" : ",") + JSON.stringify([s, [...m]]);
+    first = false;
+  }
+  yield `],"scounts":[`;
+  first = true;
+  for (const [s, c] of model.scounts) {
+    yield (first ? "" : ",") + JSON.stringify([s, c]);
+    first = false;
+  }
+  yield `],"lm":` + JSON.stringify({
+    uni: [...model.lm.uni], bi: [...model.lm.bi],
+    tri: model.lm.tri ? [...model.lm.tri] : [], V: model.lm.V, N: model.lm.N || 0,
+  }) + "}";
 }
-export function deserializePhrase(json) {
+export function serializePhrase(model) {
+  let out = "";
+  for (const part of serializePhraseChunks(model)) out += part;
+  return out;
+}
+export function deserializePhrase(json, opts = {}) {
   const o = typeof json === "string" ? JSON.parse(json) : json;
   const lm = {
     uni: new Map(o.lm.uni), bi: new Map(o.lm.bi),
@@ -442,15 +463,52 @@ export function deserializePhrase(json) {
   if (o.pcounts) {
     const pcounts = new Map(o.pcounts.map(([s, m]) => [s, new Map(m)]));
     const scounts = new Map(o.scounts);
-    const ptable = derivePtable(pcounts, scounts, { minCount: o.minCount || 1, maxCand: o.maxCand || 20 });
-    return {
+    const base = {
       srcLang: o.srcLang, maxPhrase: o.maxPhrase,
       minCount: o.minCount || 1, maxCand: o.maxCand || 20,
       weights: o.weights || null,
-      pcounts, scounts, lm, ptable,
-      _trie: buildPhraseTrie(ptable), // ön-kurulum: ilk çeviri gecikmesini önler
+      pcounts, scounts, lm,
     };
+    // lazy: yalnızca sayımlar gerek (model birleştirme); ptable/trie kurma → bellek tasarrufu
+    if (opts.lazy) return base;
+    base.ptable = derivePtable(pcounts, scounts, { minCount: base.minCount, maxCand: base.maxCand });
+    base._trie = buildPhraseTrie(base.ptable); // ön-kurulum: ilk çeviri gecikmesini önler
+    return base;
   }
   const ptable = new Map(o.ptable.map(([s, m]) => [s, new Map(m)]));
   return { srcLang: o.srcLang, maxPhrase: o.maxPhrase, ptable, lm, _trie: buildPhraseTrie(ptable) };
+}
+
+// Sayım tablosundan tekil/gürültü öbekleri eler (Moses varsayılanı gibi): kaynak
+// öbeğin TOPLAM sayımı minCount altındaysa tamamen düşürülür; ayrıca her hedef
+// adayının sayımı minCount altındaysa düşürülür. Bu, öbek SAYISINI keyfî
+// "ilk N" ile kırpmaz — yalnızca tüm korpusta bir kez görülen hizalama
+// gürültüsünü atar; kaliteye etkisi ihmal edilebilir, tablo belirgin küçülür.
+export function pruneCounts(model, minCount = 2) {
+  if (minCount <= 1) return model;
+  for (const [s, mm] of model.pcounts) {
+    for (const [t, v] of mm) if (cOf(v) < minCount) mm.delete(t);
+    const tot = [...mm.values()].reduce((a, v) => a + cOf(v), 0);
+    if (!mm.size || tot < minCount) { model.pcounts.delete(s); model.scounts.delete(s); }
+    else model.scounts.set(s, tot);
+  }
+  model.minCount = Math.max(model.minCount || 1, minCount);
+  model.ptable = derivePtable(model.pcounts, model.scounts, { minCount: 1, maxCand: model.maxCand || 20 });
+  delete model._trie;
+  return model;
+}
+
+// baseModel'i bozmadan sayımların derin kopyasını çıkarır (sözlük uygulamak için).
+export function cloneModelCounts(model) {
+  const pcounts = new Map();
+  for (const [s, mm] of model.pcounts) {
+    const nm = new Map();
+    for (const [t, v] of mm) nm.set(t, Array.isArray(v) ? [v[0], v[1]] : v);
+    pcounts.set(s, nm);
+  }
+  const scounts = new Map(model.scounts);
+  const out = { ...model, pcounts, scounts, lm: model.lm };
+  out.ptable = derivePtable(pcounts, scounts, { minCount: model.minCount || 1, maxCand: model.maxCand || 20 });
+  delete out._trie;
+  return out;
 }

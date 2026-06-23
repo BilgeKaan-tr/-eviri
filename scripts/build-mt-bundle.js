@@ -36,8 +36,8 @@ for (const f of files) {
 out += `
 // ---- Tarayıcı/worker API'si ----
 self.MT = {
-  buildPhraseModel, translatePhrase, serializePhrase, deserializePhrase,
-  mergeModels, alignTexts, alignTextsRefine, tuneWeights, evaluate, corpusBleu, tokenize, mergeDictionary,
+  buildPhraseModel, translatePhrase, serializePhrase, serializePhraseChunks, deserializePhrase,
+  mergeModels, pruneCounts, cloneModelCounts, alignTexts, alignTextsRefine, tuneWeights, evaluate, corpusBleu, tokenize, mergeDictionary,
   buildModel, translate,
 };
 `;
