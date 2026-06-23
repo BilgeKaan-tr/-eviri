@@ -13,6 +13,7 @@ COPY . .
 ENV PORT=7860
 ENV USE_SMT=true
 ENV SMT_MODEL=/app/model.json.gz
+ENV NODE_OPTIONS=--max-old-space-size=6144
 
 EXPOSE 7860
 
