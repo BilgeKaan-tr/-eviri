@@ -57,6 +57,13 @@
     <label style="font-size:13px;color:var(--muted)"><input type="checkbox" id="bilingual" /> Çift dilli çıktı (orijinal + Türkçe)</label>
   </div>
 
+  <div id="textTestCard" class="card" style="display:none;text-align:left;padding:16px">
+    <p style="margin:0 0 8px;font-size:13px;font-weight:600;color:var(--muted)">Metin Testi</p>
+    <textarea id="testInput" rows="3" style="width:100%;box-sizing:border-box;padding:8px;border:1px solid var(--border,#ccc);border-radius:6px;font-size:14px;resize:vertical" placeholder="İngilizce metin yazın..."></textarea>
+    <button type="button" id="testBtn" class="btn btn-primary" style="margin-top:8px">Çevir</button>
+    <textarea id="testOutput" rows="3" style="width:100%;box-sizing:border-box;padding:8px;margin-top:8px;border:1px solid var(--border,#ccc);border-radius:6px;font-size:14px;resize:vertical;background:var(--bg2,#f8f8f8)" placeholder="Türkçe çeviri burada görünecek..." readonly></textarea>
+  </div>
+
   <section id="dropzone" class="dropzone disabled">
     <input type="file" id="fileInput" accept="application/pdf" hidden />
     <div class="dz-inner">
@@ -328,7 +335,14 @@ modelInput.addEventListener("change", async ()=>{
     modelBadge.textContent=`✓ model hazır · ${model.ptable.size} öbek`;
     dropzone.classList.remove("disabled");
     dropzone.querySelector(".dz-hint").textContent="Kaynak: "+(model.srcLang||"en")+" → Türkçe";
+    $("textTestCard").style.display="block";
   }catch(err){ modelBadge.textContent="model yüklenemedi: "+(err.message||err); }
+});
+
+$("testBtn").addEventListener("click", ()=>{
+  const txt=$("testInput").value.trim();
+  if(!txt||!model) return;
+  $("testOutput").value=translatePhrase(model, txt);
 });
 
 browseBtn.addEventListener("click", ()=>fileInput.click());
