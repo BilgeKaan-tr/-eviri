@@ -85,6 +85,21 @@ Sıfırdan, bağımsız SMT motoru. Paralel metinden öğrenir, dış bağımlı
   (`model.weights`) ve translatePhrase varsayılan olarak kullanır (tarayıcı dahil).
 - model.json **gzip** ile sıkıştırılabilir (CLI `--gzip`; tarayıcıda
   CompressionStream). Yükleyiciler .gz / 0x1f8b sihirli baytını otomatik açar.
+- **Akışlı serileştirme** (`serializePhraseChunks` + `src/mt/write-model.js`
+  `writePhraseModel`; tarayıcıda `modelToGzipBlob`): büyük modeli kaydederken
+  tek bir dev JSON dizesi KURULMAZ; parçalar doğrudan gzip/dosya akışına yazılır.
+  Böylece V8'in ~512 MB azami dize sınırına ("Invalid string length") takılmaz —
+  öbek sayısını kırpmaya gerek kalmaz. Tüm CLI yazıcıları (`mt-train`,
+  `mt-train-parallel`, `mt-train-stream`, `mt-merge`) ve egit.html bunu kullanır.
+  NOT: okuma hâlâ `JSON.parse` (tam dize) ile; ham JSON ~512 MB üstündeyse geri
+  yükleme sınıra çarpar → `--mincount 2` ile tablo ham düzeyde küçük tutulur.
+- `pruneCounts(model, minCount)`: tüm korpusta `minCount`'tan az görülen tekil
+  öbekleri HAM SAYIM düzeyinde eler (Moses varsayılanı). Öbek SAYISINI keyfî
+  "ilk N" ile kırpmaz; yalnızca hizalama gürültüsünü atar (kalite ~aynı, model
+  belirgin küçülür). CLI `--mincount`, egit.html "min sayım" alanı (varsayılan 2).
+  `mergeModels` artık üreteç (generator) kabul eder → parçalar tek tek eritilip
+  serbest bırakılır (tepe bellek düşer); `deserializePhrase(json,{lazy:true})`
+  trie/ptable kurmadan yalnızca sayımları açar (birleştirme için).
 - `mergeDictionary`: kullanıcı sözlüğünü (kelime/karşılık) tek-kelimelik öbek
   olarak modele katar (bilinmeyen kelime otoritesi); CLI `--dict`, egit.html sözlük yükleme.
 - Model artık SAYIM (count) saklar; `derivePtable` ile φ türetilir; `mergeModels`

@@ -13,7 +13,8 @@
 import fs from "node:fs";
 import zlib from "node:zlib";
 import { buildModel, serialize } from "../src/mt/engine.js";
-import { buildPhraseModel, serializePhrase, mergeDictionary } from "../src/mt/phrase.js";
+import { buildPhraseModel, mergeDictionary, pruneCounts } from "../src/mt/phrase.js";
+import { writePhraseModel } from "../src/mt/write-model.js";
 
 function arg(name, def) {
   const i = process.argv.indexOf(name);
@@ -54,13 +55,19 @@ const kind = useWord ? "kelime" : "öbek";
 console.log(`${parallel.length} cümle çifti okundu. Eğitiliyor (${kind}-tabanlı, ${iterations} tur)...`);
 const t0 = Date.now();
 
-let json, info;
+const gzip = has("--gzip");
+let outPath, info;
 if (useWord) {
   const model = buildModel(parallel, { srcLang, iterations });
-  json = serialize(model);
+  const json = serialize(model);
   info = `öğrenilen kaynak kelime: ${model.t.size}`;
+  outPath = out;
+  if (gzip) { if (!outPath.endsWith(".gz")) outPath += ".gz"; fs.writeFileSync(outPath, zlib.gzipSync(json, { level: 9 })); }
+  else fs.writeFileSync(outPath, json);
 } else {
   const model = buildPhraseModel(parallel, { srcLang, iterations, maxPhrase, minCount, stem });
+  // Tekil öbekleri ele (sayım<minCount) → ham sayımlar da küçülür; serileştirme şişmez.
+  if (minCount > 1) pruneCounts(model, minCount);
   const dictPath = arg("--dict");
   if (dictPath) {
     const ents = [];
@@ -68,17 +75,9 @@ if (useWord) {
     mergeDictionary(model, ents);
     info = `öğrenilen öbek sayısı: ${model.ptable.size} (+sözlük ${ents.length})`;
   } else { info = `öğrenilen öbek sayısı: ${model.ptable.size}`; }
-  json = serializePhrase(model);
-}
-// --gzip: sıkıştırılmış yaz (büyük modellerde ~5-10x küçük). Çıktı .gz olur.
-const gzip = has("--gzip");
-let outPath = out;
-if (gzip) {
-  if (!outPath.endsWith(".gz")) outPath += ".gz";
-  fs.writeFileSync(outPath, zlib.gzipSync(json, { level: 9 }));
-} else {
-  fs.writeFileSync(outPath, json);
+  // Akışlı yaz: dev JSON dizesi kurulmaz → 512 MB sınırı yok.
+  outPath = await writePhraseModel(model, out, { gzip });
 }
 const kb = Math.round(fs.statSync(outPath).size / 1024);
-console.log(`✓ Model kaydedildi: ${outPath} (${kb} KB${gzip ? `, ham ${Math.round(json.length / 1024)} KB` : ""}) — ${((Date.now() - t0) / 1000).toFixed(1)} sn`);
+console.log(`✓ Model kaydedildi: ${outPath} (${kb} KB) — ${((Date.now() - t0) / 1000).toFixed(1)} sn`);
 console.log(`  ${info}`);

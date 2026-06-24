@@ -5,9 +5,9 @@
 // Kullanim:
 //   node scripts/mt-train-stream.js --tsv buyuk.tsv --out model.json --batch 20000 --gzip
 import fs from "node:fs";
-import zlib from "node:zlib";
 import readline from "node:readline";
-import { buildPhraseModel, mergeModels, serializePhrase } from "../src/mt/phrase.js";
+import { buildPhraseModel, mergeModels, pruneCounts } from "../src/mt/phrase.js";
+import { writePhraseModel } from "../src/mt/write-model.js";
 
 function arg(name, def) { const i = process.argv.indexOf(name); return i >= 0 ? process.argv[i + 1] : def; }
 const has = (n) => process.argv.includes(n);
@@ -49,9 +49,9 @@ foldBatch();
 process.stdout.write("\n");
 
 if (!running) { console.error("Hata: cümle çifti yok."); process.exit(1); }
-const json = serializePhrase(running);
-let outP = out;
-if (has("--gzip")) { if (!outP.endsWith(".gz")) outP += ".gz"; fs.writeFileSync(outP, zlib.gzipSync(json, { level: 9 })); }
-else fs.writeFileSync(outP, json);
+// Tüm korpus toplandıktan sonra tekil öbekleri ele (sayım<minCount).
+if (opts.minCount > 1) pruneCounts(running, opts.minCount);
+// Akışlı yaz: dev JSON dizesi kurulmaz → 512 MB sınırı yok.
+const outP = await writePhraseModel(running, out, { gzip: has("--gzip") });
 const kb = Math.round(fs.statSync(outP).size / 1024);
 console.log(`✓ ${outP} (${kb} KB) · ${running.pcounts.size} öbek · ${total} cümle · ${((Date.now() - t0) / 1000).toFixed(1)} sn`);

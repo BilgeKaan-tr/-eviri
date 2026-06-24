@@ -6,11 +6,11 @@
 //   node scripts/mt-train-parallel.js --src en.txt --tgt tr.txt --out m.json --workers 8 --stem --gzip
 import fs from "node:fs";
 import os from "node:os";
-import zlib from "node:zlib";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Worker } from "node:worker_threads";
-import { deserializePhrase, mergeModels, serializePhrase } from "../src/mt/phrase.js";
+import { deserializePhrase, mergeModels, pruneCounts } from "../src/mt/phrase.js";
+import { writePhraseModel } from "../src/mt/write-model.js";
 import { alignTexts } from "../src/mt/align.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -72,10 +72,19 @@ function trainChunk(pairs, wi) {
 const results = await Promise.all(chunks.map((c, wi) => trainChunk(c, wi)));
 process.stdout.write("\n");
 
-const merged = mergeModels(results.map((r) => deserializePhrase(r.json)));
-const mjson = serializePhrase(merged);
-let outP = out;
-if (has("--gzip")) { if (!outP.endsWith(".gz")) outP += ".gz"; fs.writeFileSync(outP, zlib.gzipSync(mjson, { level: 9 })); }
-else fs.writeFileSync(outP, mjson);
+// Parçaları TEK TEK çöz + erit + serbest bırak (hepsini birden açma → tepe bellek düşer).
+function* lazyModels() {
+  for (let i = 0; i < results.length; i++) {
+    const m = deserializePhrase(results[i].json, { lazy: true });
+    results[i].json = null; // serbest bırak
+    yield m;
+  }
+}
+const merged = mergeModels(lazyModels());
+// Tüm korpusta minCount'tan az görülen tekil öbekleri ele (Moses varsayılanı):
+// öbek SAYISINI keyfî kırpmaz, yalnızca hizalama gürültüsünü atar; tablo küçülür.
+if (opts.minCount > 1) pruneCounts(merged, opts.minCount);
+// Akışlı yaz: dev JSON dizesi kurulmaz → 512 MB sınırı yok.
+const outP = await writePhraseModel(merged, out, { gzip: has("--gzip") });
 const kb = Math.round(fs.statSync(outP).size / 1024);
 console.log(`✓ ${outP} (${kb} KB) · ${merged.pcounts.size} öbek · ${((Date.now() - t0) / 1000).toFixed(1)} sn`);

@@ -5,7 +5,8 @@
 //   node scripts/mt-merge.js --out birlesik.json model1.json model2.json ...
 import fs from "node:fs";
 import zlib from "node:zlib";
-import { deserializePhrase, mergeModels, serializePhrase } from "../src/mt/phrase.js";
+import { deserializePhrase, mergeModels, pruneCounts } from "../src/mt/phrase.js";
+import { writePhraseModel } from "../src/mt/write-model.js";
 
 function arg(name, def) {
   const i = process.argv.indexOf(name);
@@ -21,22 +22,21 @@ if (inputs.length < 2) {
   process.exit(1);
 }
 
-const models = inputs.map((p) => {
-  const buf = fs.readFileSync(p);
-  const txt = ((buf[0]===0x1f&&buf[1]===0x8b)||p.endsWith(".gz")) ? zlib.gunzipSync(buf).toString("utf8") : buf.toString("utf8");
-  const m = deserializePhrase(txt);
-  if (!m.pcounts) {
-    console.error(`Hata: ${p} eski biçim (sayım yok), birleştirilemez. Yeniden eğitin.`);
-    process.exit(1);
+// Modelleri TEK TEK oku + çöz (lazy: trie/ptable kurmadan) + erit → tepe bellek düşer.
+function* lazyModels() {
+  for (const p of inputs) {
+    const buf = fs.readFileSync(p);
+    const txt = ((buf[0]===0x1f&&buf[1]===0x8b)||p.endsWith(".gz")) ? zlib.gunzipSync(buf).toString("utf8") : buf.toString("utf8");
+    const m = deserializePhrase(txt, { lazy: true });
+    if (!m.pcounts) { console.error(`Hata: ${p} eski biçim (sayım yok), birleştirilemez. Yeniden eğitin.`); process.exit(1); }
+    yield m;
   }
-  return m;
-});
-
-const merged = mergeModels(models);
-const mjson = serializePhrase(merged);
-let outP = out;
-if (process.argv.includes("--gzip")) { if(!outP.endsWith(".gz")) outP += ".gz"; fs.writeFileSync(outP, zlib.gzipSync(mjson, {level:9})); }
-else fs.writeFileSync(outP, mjson);
+}
+const merged = mergeModels(lazyModels());
+const minCount = parseInt(arg("--mincount", "1"), 10);
+if (minCount > 1) pruneCounts(merged, minCount);
+// Akışlı yaz: dev JSON dizesi kurulmaz → 512 MB sınırı yok.
+const outP = await writePhraseModel(merged, out, { gzip: process.argv.includes("--gzip") });
 const kb = Math.round(fs.statSync(outP).size / 1024);
 console.log(`✓ ${inputs.length} model birleştirildi -> ${outP} (${kb} KB)`);
 console.log(`  toplam öbek: ${merged.pcounts.size}, LM kelime: ${merged.lm.V}`);
