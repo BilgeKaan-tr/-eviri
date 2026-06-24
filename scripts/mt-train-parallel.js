@@ -4,6 +4,12 @@
 // Kullanim:
 //   node scripts/mt-train-parallel.js --tsv data.tsv --out model.json
 //   node scripts/mt-train-parallel.js --src en.txt --tgt tr.txt --out m.json --workers 8 --stem --gzip
+//
+// Düşük RAM (örn. Colab): parçayı küçült + eşzamanlılığı sınırla → OOM olmaz:
+//   node scripts/mt-train-parallel.js --tsv k.tsv --out m.json --workers 2 --chunks 20 --mincount 2 --stem --gzip
+//   --workers : aynı anda kaç worker (eşzamanlılık; çekirdek sayısı kadar tut)
+//   --chunks  : korpus kaç parçaya bölünsün (çok = her parça küçük = az bellek)
+//   --heap    : her worker'a azami yığın (MB), varsayılan 4096
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -27,6 +33,9 @@ const opts = {
   stem: has("--stem"),
 };
 const nWorkers = parseInt(arg("--workers", String(os.cpus().length)), 10);
+// Her worker'a verilecek azami JS yığını (heap), MB. Büyük parçada IBM-1 tablosu
+// varsayılan yığını aşıp "ERR_WORKER_OUT_OF_MEMORY" verebilir → burada büyütülür.
+const heapMb = parseInt(arg("--heap", "4096"), 10);
 
 // Veriyi oku
 let parallel = [];
@@ -39,25 +48,31 @@ if (tsv) {
 } else { console.error("Hata: --tsv ya da --src/--tgt verin."); process.exit(1); }
 if (!parallel.length) { console.error("Hata: cümle çifti yok."); process.exit(1); }
 
-const N = Math.max(1, Math.min(nWorkers, parallel.length));
-// Parçalara böl
-const chunks = Array.from({ length: N }, () => []);
-parallel.forEach((p, i) => chunks[i % N].push(p));
+// Eşzamanlılık (aynı anda kaç worker) ile PARÇA SAYISI ayrıdır: düşük RAM'de
+// çok sayıda KÜÇÜK parça (--chunks) ama az eşzamanlı worker (--workers) →
+// her parça küçük olduğundan worker belleği aşmaz, yine de çekirdekler dolu.
+const conc = Math.max(1, Math.min(nWorkers, parallel.length));
+const nChunks = Math.max(conc, Math.min(parseInt(arg("--chunks", String(conc)), 10), parallel.length));
+const chunks = Array.from({ length: nChunks }, () => []);
+parallel.forEach((p, i) => chunks[i % nChunks].push(p));
 
-console.log(`${parallel.length} cümle çifti · ${N} çekirdek · eğitiliyor...`);
+console.log(`${parallel.length} cümle çifti · ${nChunks} parça · ${conc} eşzamanlı · heap ${heapMb}MB · eğitiliyor...`);
 const t0 = Date.now();
 
-// Canlı ilerleme: her worker'ın yüzdesini topla, ortalamayı yaz
-const fracs = new Array(N).fill(0);
+// Canlı ilerleme: her parçanın yüzdesini topla, ortalamayı yaz
+const fracs = new Array(nChunks).fill(0);
 let finished = 0;
 function render() {
-  const avg = Math.round(fracs.reduce((a, b) => a + b, 0) / N * 100);
-  process.stdout.write(`\r  eğitiliyor... %${avg}  (${finished}/${N} parça bitti)   `);
+  const avg = Math.round(fracs.reduce((a, b) => a + b, 0) / nChunks * 100);
+  process.stdout.write(`\r  eğitiliyor... %${avg}  (${finished}/${nChunks} parça bitti)   `);
 }
 
 function trainChunk(pairs, wi) {
   return new Promise((resolve, reject) => {
-    const w = new Worker(new URL("./mt-train-worker.mjs", import.meta.url), { type: "module" });
+    const w = new Worker(new URL("./mt-train-worker.mjs", import.meta.url), {
+      type: "module",
+      resourceLimits: { maxOldGenerationSizeMb: heapMb }, // worker yığınını büyüt (OOM koruması)
+    });
     w.on("message", (m) => {
       if (m.type === "progress") { fracs[m.wi] = m.frac; render(); return; }
       w.terminate();
@@ -69,7 +84,19 @@ function trainChunk(pairs, wi) {
   });
 }
 
-const results = await Promise.all(chunks.map((c, wi) => trainChunk(c, wi)));
+// Havuz (pool): en çok `conc` worker aynı anda; kalan parçalar sırada bekler.
+// Böylece tepe bellek conc × (parça boyutu) ile sınırlı kalır (tüm parçalar
+// birden değil). Bu, ERR_WORKER_OUT_OF_MEMORY'nin asıl çözümüdür.
+const results = new Array(nChunks);
+let nextChunk = 0;
+async function poolWorker() {
+  while (nextChunk < nChunks) {
+    const wi = nextChunk++;
+    results[wi] = await trainChunk(chunks[wi], wi);
+    chunks[wi] = null; // işlenen parçanın çiftlerini serbest bırak
+  }
+}
+await Promise.all(Array.from({ length: conc }, () => poolWorker()));
 process.stdout.write("\n");
 
 // Parçaları TEK TEK çöz + erit + serbest bırak (hepsini birden açma → tepe bellek düşer).
