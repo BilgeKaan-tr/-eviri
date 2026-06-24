@@ -9,6 +9,7 @@
     "dev": "node --watch server.js",
     "setup": "node scripts/download-font.js",
     "build:web": "node scripts/build-mt-bundle.js",
+    "build:standalone": "node scripts/build-standalone.js",
     "test": "node --test",
     "check:html": "node scripts/check-html.mjs",
     "model": "node scripts/mt-fetch-corpus.js --corpus ted --out korpus.tsv && node scripts/mt-train-parallel.js --tsv korpus.tsv --out model.json --workers 4 --iter 10 --mincount 2 --stem --gzip && node scripts/mt-eval.js --model model.json.gz --dev data/dev-ornek.tsv"
