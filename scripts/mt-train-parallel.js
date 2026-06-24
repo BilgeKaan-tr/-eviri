@@ -107,7 +107,10 @@ function* lazyModels() {
     yield m;
   }
 }
-const merged = mergeModels(lazyModels());
+// derive:false → birleştirmede ptable KURMA. writePhraseModel yalnızca
+// pcounts/scounts/lm yazar (ptable diske gitmez, okurken yeniden kurulur);
+// dev ptable'ı burada kurmak boşuna bellek harcar (OOM riski).
+const merged = mergeModels(lazyModels(), { derive: false });
 // Tüm korpusta minCount'tan az görülen tekil öbekleri ele (Moses varsayılanı):
 // öbek SAYISINI keyfî kırpmaz, yalnızca hizalama gürültüsünü atar; tablo küçülür.
 if (opts.minCount > 1) pruneCounts(merged, opts.minCount);

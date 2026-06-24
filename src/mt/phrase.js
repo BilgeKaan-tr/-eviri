@@ -235,7 +235,7 @@ export function derivePtable(pcounts, scounts, { minCount = 1, maxCand = 20 } = 
 
 // Birden çok modeli SAYIM düzeyinde birleştirir (20.000 kitabı parça parça
 // eğitip toplamak için). Öbek sayımları, kaynak sayımları ve LM sayımları toplanır.
-export function mergeModels(models) {
+export function mergeModels(models, { derive = true } = {}) {
   const pc = new Map(), sc = new Map();
   const uni = new Map(), bi = new Map(), tri = new Map();
   let N = 0, maxPhrase = 1;
@@ -261,8 +261,12 @@ export function mergeModels(models) {
     maxPhrase = Math.max(maxPhrase, m.maxPhrase || 1);
   }
   const lm = { uni, bi, tri, V: uni.size, N };
+  // derive:false → ptable kurma (hemen ardından pruneCounts onu yeniden kuracaksa
+  // bu büyük Map'i iki kez kurmak tepe belleği gereksiz şişirir). Boş ptable döner;
+  // çağıran prune/derive ile bir kez kurar.
   return {
-    pcounts: pc, scounts: sc, ptable: derivePtable(pc, sc, { minCount: 1, maxCand: 20 }),
+    pcounts: pc, scounts: sc,
+    ptable: derive ? derivePtable(pc, sc, { minCount: 1, maxCand: 20 }) : new Map(),
     lm, srcLang, maxPhrase, minCount: 1, maxCand: 20,
   };
 }

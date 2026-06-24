@@ -30,7 +30,9 @@ const t0 = Date.now();
 function foldBatch() {
   if (!batch.length) return;
   const m = buildPhraseModel(batch, opts);
-  running = running ? mergeModels([running, m]) : m;
+  // derive:false → her grupta ptable kurma (sondaki tek derive yeter); ara
+  // ptable'lar büyük korpusta gereksiz CPU+bellektir.
+  running = running ? mergeModels([running, m], { derive: false }) : m;
   total += batch.length; batches++;
   process.stdout.write(`\r  ${total} cümle · ${batches} grup işlendi`);
   batch = [];
