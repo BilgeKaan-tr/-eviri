@@ -7,6 +7,11 @@
 //   node scripts/mt-fetch-corpus.js --corpus ted --out korpus.tsv --limit 200000
 //   node scripts/mt-fetch-corpus.js --corpus opensubtitles --out korpus.tsv --limit 500000
 //
+// Filtreler (varsayılan açık): boş satır, >500 karakter ve uzunluk oranı
+// 0.3–3.5 dışı çiftler elenir. Bittiğinde KAÇ çiftin niçin elendiği yazılır.
+// Daha çok çift için gevşet:  --no-filter | --maxlen 1000 | --minratio 0.2 |
+// --maxratio 5 | --dedup (yinelenenleri ele).
+//
 // Sonra:  node scripts/mt-train-parallel.js --tsv korpus.tsv --out model.json --workers 8 --stem --gzip
 import fs from "node:fs";
 import os from "node:os";
@@ -65,9 +70,16 @@ const CORPORA = {
 };
 
 function arg(name, def) { const i = process.argv.indexOf(name); return i >= 0 ? process.argv[i + 1] : def; }
+const has = (n) => process.argv.includes(n);
 const corpus = arg("--corpus", "tatoeba");
 const out = arg("--out", "korpus.tsv");
 const limit = parseInt(arg("--limit", "0"), 10); // 0 = sınırsız
+// Filtre eşikleri (ayarlanabilir): kaç çiftin niçin elendiğini de raporlarız.
+const noFilter = has("--no-filter");               // uzunluk+oran filtrelerini kapat
+const maxLen = parseInt(arg("--maxlen", "500"), 10);
+const minRatio = parseFloat(arg("--minratio", "0.3"));
+const maxRatio = parseFloat(arg("--maxratio", "3.5"));
+const dedup = has("--dedup");                       // yinelenen çiftleri ele
 const url = CORPORA[corpus];
 if (!url) {
   console.error(`Hata: bilinmeyen korpus '${corpus}'. Seçenekler: ${Object.keys(CORPORA).join(", ")}`);
@@ -110,16 +122,22 @@ const enIt = readline.createInterface({ input: fs.createReadStream(enPath, "utf8
 const trIt = readline.createInterface({ input: fs.createReadStream(trPath, "utf8"), crlfDelay: Infinity })[Symbol.asyncIterator]();
 const w = fs.createWriteStream(out, "utf8");
 let kept = 0, seen = 0;
+// Elenme nedenleri (yanıtı net görmek için): "geri kalan nerede?"
+const drop = { empty: 0, len: 0, ratio: 0, dup: 0 };
+const seenSet = dedup ? new Set() : null;
 while (true) {
   const a = await enIt.next(), b = await trIt.next();
   if (a.done || b.done) break;
   seen++;
   const en = a.value.replace(/\t/g, " ").trim();
   const tr = b.value.replace(/\t/g, " ").trim();
-  if (!en || !tr) continue;
-  if (en.length > 500 || tr.length > 500) continue;            // aşırı uzun satır ele
-  const ratio = en.length / Math.max(1, tr.length);
-  if (ratio < 0.3 || ratio > 3.5) continue;                    // dengesiz çift ele
+  if (!en || !tr) { drop.empty++; continue; }
+  if (!noFilter) {
+    if (en.length > maxLen || tr.length > maxLen) { drop.len++; continue; }      // aşırı uzun satır
+    const ratio = en.length / Math.max(1, tr.length);
+    if (ratio < minRatio || ratio > maxRatio) { drop.ratio++; continue; }        // dengesiz çift
+  }
+  if (seenSet) { const key = en + "\t" + tr; if (seenSet.has(key)) { drop.dup++; continue; } seenSet.add(key); }
   w.write(en + "\t" + tr + "\n");
   if (++kept % 50000 === 0) process.stdout.write(`\r  ${kept} çift yazıldı`);
   if (limit && kept >= limit) break;
@@ -129,4 +147,14 @@ await new Promise((r) => w.on("finish", r));
 fs.rmSync(tmp, { recursive: true, force: true });
 process.stdout.write("\n");
 console.log(`✓ ${kept} cümle çifti -> ${out}  (${seen} satır tarandı)`);
+const totalDropped = drop.empty + drop.len + drop.ratio + drop.dup;
+if (totalDropped) {
+  console.log(`  elenen ${totalDropped} satır:` +
+    ` boş=${drop.empty}` +
+    ` · uzun(>${maxLen})=${drop.len}` +
+    ` · oran(<${minRatio}|>${maxRatio})=${drop.ratio}` +
+    (dedup ? ` · yinelenen=${drop.dup}` : ``));
+  console.log(`  daha çok çift için: --no-filter (tüm uzunluk/oran filtrelerini kapat),` +
+    ` --maxlen 1000, --maxratio 5 gibi gevşetin.`);
+}
 console.log(`Şimdi eğit:\n  node scripts/mt-train-parallel.js --tsv ${out} --out model.json --workers ${os.cpus().length} --stem --gzip`);
