@@ -372,7 +372,7 @@ async function handleFile(file){
     const totalJobs = jobs.length || 1;
 
     const cache = new Map();   // ayni metin parcalarini tekrar cevirme
-    let done = 0, failed = 0; const t0 = performance.now();
+    let done = 0, failed = 0; let t0 = performance.now();
 
     for(const job of jobs){
       if(cancelRequested){ reset(); return; }
@@ -386,12 +386,15 @@ async function handleFile(file){
       pageBuckets[job.pi][job.pj][job.ci] = tr;
 
       done++;
+      // İlk parça model ısınmasını (graph derleme) içerir; bu tek-seferlik
+      // gecikmeyi ETA'ya yaymamak için sayacı ilk parçadan SONRA sıfırla.
+      if(done === 1) t0 = performance.now();
       progressFill.style.width = Math.round(done/totalJobs*100)+"%";
       phaseLabel.textContent = `sayfa ${job.pi+1} / ${pages.length}`;
       progressText.textContent = `Çevriliyor... ${done} / ${totalJobs} parça`;
       const elapsed = (performance.now()-t0)/1000;
-      const eta = elapsed/done*(totalJobs-done);
-      progressSub.textContent = done>1 ? `kalan süre ${fmtTime(eta)}` : "ilk parça biraz yavaş olabilir...";
+      const eta = done>1 ? elapsed/(done-1)*(totalJobs-done) : 0;
+      progressSub.textContent = done>1 ? `kalan süre ${fmtTime(eta)}` : "ilk parça yavaş (model ısınıyor)...";
     }
 
     if(cancelRequested){ reset(); return; }
