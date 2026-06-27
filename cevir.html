@@ -130,17 +130,30 @@ const TRANSFORMERS_URL = "https://cdn.jsdelivr.net/npm/@huggingface/transformers
 const MAX_CHARS = 600;
 
 // Sadece Ingilizce -> Turkce. NLLB-200 (600M, 200 dil) yerine EN->TR'ye OZEL,
-// cok daha kucuk/hizli OPUS-MT (Marian) modelleri kullanilir. Marian tek
-// yonludur: src/tgt dili gerekmez. Modeller sirayla denenir; biri yuklenemezse
-// digerine, en sonda NLLB yedegine dusulur (her cihazda bir model kesin yuklenir).
-const MARIAN_SMALL  = "Xenova/opus-mt-en-tr";        // ~75 MB, en hizli
-const MARIAN_BIG    = "Xenova/opus-mt-tc-big-en-tr"; // daha kaliteli, biraz buyuk/yavas
-const NLLB_FALLBACK = "Xenova/nllb-200-distilled-600M"; // 200 dil, yedek
-function modelChain(mode){
-  const big   = { id: MARIAN_BIG,    family: "marian" };
-  const small = { id: MARIAN_SMALL,  family: "marian" };
-  const nllb  = { id: NLLB_FALLBACK, family: "nllb"   };
-  return mode === "fp16" ? [big, small, nllb] : [small, big, nllb]; // kalite modunda once buyuk
+// cok daha kucuk/hizli OPUS-MT (Marian) modelleri DENENIR. Marian tek yonludur:
+// src/tgt dili gerekmez. Zincir sirayla denenir; bir model 404/yuklenemezse
+// digerine, EN SONDA NLLB yedegine dusulur. Boylece opus-mt en-tr ONNX'i HF'de
+// olsa da olmasa da, her cihazda CALISAN bir model kesin yuklenir.
+// Not: cogu opus-mt en-tr ONNX olarak yayginca bulunmayabilir; bu durumda
+// otomatik olarak NLLB'ye dusulur (model karti hangi modelin yuklendigini gosterir).
+const MARIAN_EN_TR = [
+  "Xenova/opus-mt-tc-big-en-tr",
+  "onnx-community/opus-mt-tc-big-en-tr",
+  "Xenova/opus-mt-en-tr",
+  "onnx-community/opus-mt-en-tr",
+];
+const NLLB_FALLBACK = "Xenova/nllb-200-distilled-600M"; // 200 dil, kesin var olan yedek
+function modelChain(){
+  const chain = MARIAN_EN_TR.map((id) => ({ id, family: "marian" }));
+  chain.push({ id: NLLB_FALLBACK, family: "nllb" });
+  return chain;
+}
+// Cihaza gore dtype. ONEMLI: transformers.js'te ceviri (seq2seq) + WebGPU + q8
+// decoder BOZUK (cop cikti / "Can't create a session"). Bu yuzden WebGPU'da
+// HER ZAMAN fp16; WASM'da q8 (hizli modda q4) kullanilir.
+function dtypeFor(mode, device){
+  if (device === "webgpu") return "fp16";
+  return mode === "q4" ? "q4" : "q8";
 }
 // mode + cihaz -> cozucu/batch ayari. WebGPU'da buyuk batch = yuksek throughput;
 // WASM'da batch fayda etmez ve bellegi zorlar, bu yuzden kucuk tutulur. Greedy
@@ -149,7 +162,7 @@ function tuning(mode, device){
   const gpu = device === "webgpu";
   if (mode === "fp16") return { beams: 4, batch: gpu ? 8  : 2 }; // kalite
   if (mode === "q4")   return { beams: 1, batch: gpu ? 32 : 4 }; // hizli
-  return { beams: 1, batch: gpu ? 16 : 4 };                      // q8 denge (varsayilan)
+  return { beams: 1, batch: gpu ? 16 : 4 };                      // denge (varsayilan)
 }
 
 // ====== Ceviri motoru: once Web Worker, olmazsa ana is parcacigi ======
@@ -165,21 +178,17 @@ self.onmessage = async (e) => {
   const m = e.data;
   if (m.type === "load") {
     family = m.family || "marian";
-    const devices = m.useGPU ? ["webgpu","wasm"] : ["wasm"];
-    let lastErr;
-    for (const device of devices) {
-      // fp16 yalnizca WebGPU'da; WASM'a dusunce q8'e indir.
-      const dtype = (device === "wasm" && m.dtype === "fp16") ? "q8" : m.dtype;
-      try {
-        translator = await pipeline("translation", m.model, {
-          device, dtype,
-          progress_callback: (p) => self.postMessage({ type:"progress", p })
-        });
-        self.postMessage({ type:"ready", device });
-        return;
-      } catch (err) { lastErr = err; translator = null; }
+    // Tek bir (device, dtype) denenir; cihaz/yedek sirasini ANA THREAD yonetir.
+    try {
+      translator = await pipeline("translation", m.model, {
+        device: m.device, dtype: m.dtype,
+        progress_callback: (p) => self.postMessage({ type:"progress", p })
+      });
+      self.postMessage({ type:"ready", device: m.device });
+    } catch (err) {
+      translator = null;
+      self.postMessage({ type:"loadError", message: String((err && err.message) || err) });
     }
-    self.postMessage({ type:"loadError", message: String((lastErr && lastErr.message) || lastErr) });
   } else if (m.type === "translate") {
     try {
       // Bir dizi (batch) metni tek seferde cevir; greedy = num_beams 1.
@@ -208,62 +217,87 @@ const Engine = {
   reqId: 0,
   pending: new Map(),
 
-  async load({ chain, dtype, useGPU, beams, onProgress }) {
+  async load({ chain, mode, useGPU, beams, onProgress }) {
     this.beams = beams || 1;
-    // 1) Worker dene: zincirdeki ILK yuklenebilen model kazanir.
+    const errs = [];
+    const isMissing = (m) => /not.*locate|could ?n.t (find|locate)|404|unauthorized|not found|does not exist|repo/i.test(String(m || ""));
+
+    // 1) Worker yolu: (device, model) kombinasyonlarini sirayla dene.
+    //    Cihaz sirasi: webgpu -> wasm. WebGPU ceviri pipeline'i bazi cihaz/
+    //    surumlerde coker; o yuzden webgpu bir model icin CIHAZ hatasi verirse
+    //    (404 degil) o cihazi tamamen birakip WASM'a geceriz (bos yere her modeli
+    //    webgpu'da denemeyiz). 404 ise siradaki MODELE geceriz.
     if (typeof Worker !== "undefined") {
+      const devices = useGPU ? ["webgpu", "wasm"] : ["wasm"];
+      for (const device of devices) {
+        let deviceBroken = false;
+        for (const cand of chain) {
+          const dtype = dtypeFor(mode, device);
+          try {
+            await this._workerAttempt(cand, device, dtype, onProgress);
+            return; // basari — alanlar _workerAttempt icinde set edildi
+          } catch (err) {
+            const m = (err && err.message) || String(err);
+            errs.push(`worker · ${cand.id} · ${device}/${dtype} → ${m}`);
+            if (device === "webgpu" && !isMissing(m)) { deviceBroken = true; break; }
+          }
+        }
+        if (deviceBroken) continue; // webgpu bozuk -> wasm dene
+      }
+    }
+
+    // 2) Ana is parcacigi (worker hic yoksa / hepsi coktuyse) — sadece guvenli WASM.
+    try {
+      const { pipeline, env } = await import(TRANSFORMERS_URL);
+      env.allowLocalModels = false; env.useBrowserCache = true;
       for (const cand of chain) {
-        let worker = null;
+        const dtype = dtypeFor(mode, "wasm");
         try {
-          const blob = new Blob([WORKER_SRC], { type: "text/javascript" });
-          worker = new Worker(URL.createObjectURL(blob), { type: "module" });
-          const device = await this._workerLoad(worker, { model: cand.id, family: cand.family, dtype, useGPU, onProgress });
-          this.worker = worker; this.mode = "worker";
-          this.family = cand.family; this.modelId = cand.id; this.device = device;
-          worker.onmessage = (e) => this._onWorkerMsg(e.data);
-          // Worker cokerse bekleyen tum istekleri reddet (UI takilmasin).
-          worker.onerror = (e) => {
-            const msg = (e && e.message) || "çeviri arka planı çöktü";
+          this.mainTranslator = await pipeline("translation", cand.id, { device: "wasm", dtype, progress_callback: onProgress });
+          this.device = "wasm"; this.mode = "main"; this.dtype = dtype;
+          this.family = cand.family; this.modelId = cand.id; return;
+        } catch (err) { errs.push(`main · ${cand.id} · wasm/${dtype} → ${(err && err.message) || err}`); this.mainTranslator = null; }
+      }
+    } catch (err) { errs.push(`transformers.js yüklenemedi → ${(err && err.message) || err}`); }
+
+    const e = new Error("Hiçbir çeviri modeli yüklenemedi");
+    e.detail = errs.join("\n");
+    throw e;
+  },
+
+  // Tek bir (model, device, dtype) denemesi: taze worker + zaman asimi koruması.
+  // Basarida this.worker/mode/family/modelId/device/dtype set edilir.
+  _workerAttempt(cand, device, dtype, onProgress) {
+    return new Promise((resolve, reject) => {
+      let worker = null, settled = false, watchdog = null;
+      const done = () => { if (watchdog) clearTimeout(watchdog); };
+      const fail = (err) => { if (settled) return; settled = true; done(); if (worker) { try { worker.terminate(); } catch {} } reject(err); };
+      // Indirme/baslatma 120 sn boyunca HIC olay uretmezse takildi say -> sonraki deneme.
+      const arm = () => { if (watchdog) clearTimeout(watchdog); watchdog = setTimeout(() => fail(new Error("zaman aşımı (yanıt yok)")), 120000); };
+      try {
+        const blob = new Blob([WORKER_SRC], { type: "text/javascript" });
+        worker = new Worker(URL.createObjectURL(blob), { type: "module" });
+      } catch (err) { return fail(err); }
+      worker.onmessage = (e) => {
+        const d = e.data;
+        if (d.type === "progress") { onProgress && onProgress(d.p); arm(); }
+        else if (d.type === "ready") {
+          if (settled) return; settled = true; done();
+          this.worker = worker; this.mode = "worker"; this.dtype = dtype;
+          this.family = cand.family; this.modelId = cand.id; this.device = d.device;
+          worker.onmessage = (ev) => this._onWorkerMsg(ev.data);
+          // Calisma aninda worker cokerse bekleyen tum istekleri reddet.
+          worker.onerror = (ev) => {
+            const msg = (ev && ev.message) || "çeviri arka planı çöktü";
             for (const p of this.pending.values()) p.reject(new Error(msg));
             this.pending.clear();
           };
-          return;
-        } catch (err) {
-          console.warn("Model yüklenemedi (worker), sıradaki deneniyor:", cand.id, err);
-          if (worker) { try { worker.terminate(); } catch {} }
-          else break; // Worker olusturulamadi -> ana is parcacigina gec.
-        }
-      }
-    }
-    // 2) Ana is parcacigi (geri donus) — ayni zinciri dene.
-    const { pipeline, env } = await import(TRANSFORMERS_URL);
-    env.allowLocalModels = false; env.useBrowserCache = true;
-    let lastErr;
-    for (const cand of chain) {
-      const devices = useGPU ? ["webgpu","wasm"] : ["wasm"];
-      for (const device of devices) {
-        const dt = (device === "wasm" && dtype === "fp16") ? "q8" : dtype;
-        try {
-          this.mainTranslator = await pipeline("translation", cand.id, { device, dtype: dt, progress_callback: onProgress });
-          this.device = device; this.mode = "main";
-          this.family = cand.family; this.modelId = cand.id; return;
-        } catch (err) { lastErr = err; this.mainTranslator = null; }
-      }
-    }
-    throw lastErr || new Error("Hiçbir çeviri modeli yüklenemedi");
-  },
-
-  _workerLoad(worker, { model, family, dtype, useGPU, onProgress }) {
-    return new Promise((resolve, reject) => {
-      const onMsg = (e) => {
-        const d = e.data;
-        if (d.type === "progress") { onProgress && onProgress(d.p); }
-        else if (d.type === "ready") { worker.removeEventListener("message", onMsg); resolve(d.device); }
-        else if (d.type === "loadError") { worker.removeEventListener("message", onMsg); reject(new Error(d.message)); }
+          resolve();
+        } else if (d.type === "loadError") { fail(new Error(d.message)); }
       };
-      worker.addEventListener("message", onMsg);
-      worker.addEventListener("error", (e) => reject(new Error(e.message || "worker hatası")), { once: true });
-      worker.postMessage({ type: "load", model, family, dtype, useGPU });
+      worker.onerror = (e) => fail(new Error((e && e.message) || "worker çöktü"));
+      arm();
+      worker.postMessage({ type: "load", model: cand.id, family: cand.family, device, dtype });
     });
   },
 
@@ -329,8 +363,8 @@ async function loadModel(){
     const mode = qualitySel.value;
     const { beams } = tuning(mode, useGPU ? "webgpu" : "wasm");
     await Engine.load({
-      chain: modelChain(mode),
-      dtype: mode,
+      chain: modelChain(),
+      mode,
       useGPU,
       beams,
       onProgress: (p)=>{
@@ -347,15 +381,22 @@ async function loadModel(){
     modelFill.style.width="100%";
     const dev = Engine.device==="webgpu" ? "WebGPU" : "WASM";
     const mdl = String(Engine.modelId||"").split("/").pop();
-    modelText.textContent = `✓ Model hazır: ${mdl} (${dev}) — artık çevrimdışı çalışır.`;
+    const slow = String(Engine.modelId||"").toLowerCase().includes("nllb");
+    modelText.textContent = slow
+      ? `✓ Model hazır: ${mdl} (${dev}) — NOT: özel EN→TR modeli bulunamadı, yedeğe düşüldü (daha yavaş).`
+      : `✓ Model hazır: ${mdl} (${dev}) — artık çevrimdışı çalışır.`;
     loadModelBtn.textContent = "Model Hazır ✓";
     deviceBadge.textContent = (Engine.device==="webgpu" ? "⚡ WebGPU" : "🐢 WASM") + (Engine.mode==="worker" ? " · arka planda" : "");
     dropzone.classList.remove("disabled");
     dropzone.querySelector(".dz-hint").textContent = "İngilizce → Türkçe · Tamamen cihazınızda";
   }catch(err){
-    console.error(err);
+    console.error(err, err && err.detail);
     loadModelBtn.disabled = false; qualitySel.disabled = false;
-    modelText.textContent = "Model yüklenemedi: " + (err.message||err);
+    loadModelBtn.textContent = "Tekrar Dene";
+    const detail = (err && err.detail) ? "\n\nDenemeler:\n" + err.detail : "";
+    modelText.textContent = "Model yüklenemedi: " + (err.message||err) + detail;
+    modelText.style.whiteSpace = "pre-wrap";
+    modelText.style.textAlign = "left";
   }
 }
 function shortName(f){ if(!f) return ""; const s=String(f); return s.length>22 ? "…"+s.slice(-22) : s; }
