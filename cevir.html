@@ -57,9 +57,9 @@
   <div id="modelCard" class="card">
     <span class="badge" id="deviceBadge">cihaz kontrol ediliyor...</span>
     <p class="model-text">
-      Çeviri modeli (Meta NLLB-200) <b>ilk seferde bir kez</b> indirilir
-      (~300–600 MB) ve tarayıcınızda saklanır. Sonrasında <b>internetsiz</b>,
-      tamamen cihazınızda çalışır.
+      İngilizce→Türkçe çeviri modeli (OPUS-MT) <b>ilk seferde bir kez</b>
+      indirilir (~75–300 MB) ve tarayıcınızda saklanır. Sonrasında
+      <b>internetsiz</b>, tamamen cihazınızda çalışır.
     </p>
     <div class="opt-row">
       <label for="qualitySel">Mod:</label>
@@ -83,7 +83,7 @@
       <p class="dz-text">PDF dosyasını buraya sürükleyin</p>
       <p class="dz-or">veya</p>
       <button type="button" id="browseBtn" class="btn">Dosya Seç</button>
-      <p class="dz-hint">Önce modeli hazırlayın · Kaynak dil otomatik algılanır</p>
+      <p class="dz-hint">Önce modeli hazırlayın · İngilizce → Türkçe</p>
     </div>
   </section>
 
@@ -111,7 +111,7 @@
     <button type="button" id="errorResetBtn" class="btn btn-ghost">Tekrar Dene</button>
   </section>
 
-  <footer><p>Hiçbir veriniz cihazınızdan çıkmaz · Çevrimdışı çalışır · Meta NLLB-200</p></footer>
+  <footer><p>Hiçbir veriniz cihazınızdan çıkmaz · Çevrimdışı çalışır · İngilizce→Türkçe · OPUS-MT</p></footer>
 </main>
 
 <!-- PDF kutuphaneleri (CDN, UMD global) -->
@@ -122,33 +122,34 @@
 
 <script type="module">
 import * as pdfjsLib from "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.min.mjs";
-import { franc } from "https://cdn.jsdelivr.net/npm/franc@6/+esm";
 pdfjsLib.GlobalWorkerOptions.workerSrc =
   "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.worker.min.mjs";
 
 const { PDFDocument, rgb } = PDFLib;
 const TRANSFORMERS_URL = "https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.5.2";
-const MODEL_ID = "Xenova/nllb-200-distilled-600M";
-const TGT_LANG = "tur_Latn";
 const MAX_CHARS = 600;
 
-// franc (ISO 639-3) -> NLLB FLORES-200
-const LANG_MAP = {
-  eng:"eng_Latn", tur:"tur_Latn", deu:"deu_Latn", fra:"fra_Latn", spa:"spa_Latn",
-  ita:"ita_Latn", por:"por_Latn", rus:"rus_Cyrl", ara:"arb_Arab", arb:"arb_Arab",
-  cmn:"zho_Hans", zho:"zho_Hans", jpn:"jpn_Jpan", kor:"kor_Hang", nld:"nld_Latn",
-  pol:"pol_Latn", ukr:"ukr_Cyrl", ron:"ron_Latn", ell:"ell_Grek", heb:"heb_Hebr",
-  hin:"hin_Deva", pes:"pes_Arab", fas:"pes_Arab", swe:"swe_Latn", nob:"nob_Latn",
-  nor:"nob_Latn", dan:"dan_Latn", fin:"fin_Latn", ces:"ces_Latn", hun:"hun_Latn",
-  bul:"bul_Cyrl", srp:"srp_Cyrl", hrv:"hrv_Latn", slk:"slk_Latn", slv:"slv_Latn",
-  lit:"lit_Latn", lav:"lvs_Latn", lvs:"lvs_Latn", est:"est_Latn", ind:"ind_Latn",
-  vie:"vie_Latn", tha:"tha_Thai", msa:"zsm_Latn", zsm:"zsm_Latn", aze:"azj_Latn"
-};
-function detectLang(text, fallback){
-  try{
-    const code = franc(text||"", {minLength:10});
-    return LANG_MAP[code] || fallback || "eng_Latn";
-  }catch{ return fallback || "eng_Latn"; }
+// Sadece Ingilizce -> Turkce. NLLB-200 (600M, 200 dil) yerine EN->TR'ye OZEL,
+// cok daha kucuk/hizli OPUS-MT (Marian) modelleri kullanilir. Marian tek
+// yonludur: src/tgt dili gerekmez. Modeller sirayla denenir; biri yuklenemezse
+// digerine, en sonda NLLB yedegine dusulur (her cihazda bir model kesin yuklenir).
+const MARIAN_SMALL  = "Xenova/opus-mt-en-tr";        // ~75 MB, en hizli
+const MARIAN_BIG    = "Xenova/opus-mt-tc-big-en-tr"; // daha kaliteli, biraz buyuk/yavas
+const NLLB_FALLBACK = "Xenova/nllb-200-distilled-600M"; // 200 dil, yedek
+function modelChain(mode){
+  const big   = { id: MARIAN_BIG,    family: "marian" };
+  const small = { id: MARIAN_SMALL,  family: "marian" };
+  const nllb  = { id: NLLB_FALLBACK, family: "nllb"   };
+  return mode === "fp16" ? [big, small, nllb] : [small, big, nllb]; // kalite modunda once buyuk
+}
+// mode + cihaz -> cozucu/batch ayari. WebGPU'da buyuk batch = yuksek throughput;
+// WASM'da batch fayda etmez ve bellegi zorlar, bu yuzden kucuk tutulur. Greedy
+// (num_beams=1) cogu kez beam'e gore ~3-4x hizlidir, kalite kaybi cok kucuktur.
+function tuning(mode, device){
+  const gpu = device === "webgpu";
+  if (mode === "fp16") return { beams: 4, batch: gpu ? 8  : 2 }; // kalite
+  if (mode === "q4")   return { beams: 1, batch: gpu ? 32 : 4 }; // hizli
+  return { beams: 1, batch: gpu ? 16 : 4 };                      // q8 denge (varsayilan)
 }
 
 // ====== Ceviri motoru: once Web Worker, olmazsa ana is parcacigi ======
@@ -159,15 +160,19 @@ import { pipeline, env } from "${TRANSFORMERS_URL}";
 env.allowLocalModels = false;
 env.useBrowserCache = true;
 let translator = null;
+let family = "marian";
 self.onmessage = async (e) => {
   const m = e.data;
   if (m.type === "load") {
+    family = m.family || "marian";
     const devices = m.useGPU ? ["webgpu","wasm"] : ["wasm"];
     let lastErr;
     for (const device of devices) {
+      // fp16 yalnizca WebGPU'da; WASM'a dusunce q8'e indir.
+      const dtype = (device === "wasm" && m.dtype === "fp16") ? "q8" : m.dtype;
       try {
         translator = await pipeline("translation", m.model, {
-          device, dtype: m.dtype,
+          device, dtype,
           progress_callback: (p) => self.postMessage({ type:"progress", p })
         });
         self.postMessage({ type:"ready", device });
@@ -177,9 +182,14 @@ self.onmessage = async (e) => {
     self.postMessage({ type:"loadError", message: String((lastErr && lastErr.message) || lastErr) });
   } else if (m.type === "translate") {
     try {
-      const res = await translator(m.text, { src_lang: m.src, tgt_lang: m.tgt });
-      const out = (Array.isArray(res) ? res[0] : res);
-      self.postMessage({ type:"result", id:m.id, text:(out && out.translation_text) || "" });
+      // Bir dizi (batch) metni tek seferde cevir; greedy = num_beams 1.
+      const gen = { num_beams: m.beams || 1, do_sample: false };
+      const opts = family === "nllb"
+        ? Object.assign({ src_lang: "eng_Latn", tgt_lang: "tur_Latn" }, gen)
+        : gen;
+      const res = await translator(m.texts, opts);
+      const arr = Array.isArray(res) ? res : [res];
+      self.postMessage({ type:"result", id:m.id, texts: arr.map(o => (o && o.translation_text) || "") });
     } catch (err) {
       self.postMessage({ type:"tError", id:m.id, message: String((err && err.message) || err) });
     }
@@ -192,72 +202,93 @@ const Engine = {
   worker: null,
   mainTranslator: null,
   device: null,
+  family: "marian",
+  modelId: null,
+  beams: 1,
   reqId: 0,
   pending: new Map(),
 
-  async load({ dtype, useGPU, onProgress }) {
-    // 1) Worker dene
-    try {
-      const blob = new Blob([WORKER_SRC], { type: "text/javascript" });
-      const url = URL.createObjectURL(blob);
-      const worker = new Worker(url, { type: "module" });
-      await this._workerLoad(worker, { dtype, useGPU, onProgress });
-      this.worker = worker; this.mode = "worker";
-      worker.onmessage = (e) => this._onWorkerMsg(e.data);
-      // Worker cokerse bekleyen tum istekleri reddet (UI takilmasin).
-      worker.onerror = (e) => {
-        const msg = (e && e.message) || "çeviri arka planı çöktü";
-        for (const p of this.pending.values()) p.reject(new Error(msg));
-        this.pending.clear();
-      };
-      return;
-    } catch (err) {
-      console.warn("Worker kullanılamadı, ana iş parçacığına geçiliyor:", err);
-      if (this.worker) { try { this.worker.terminate(); } catch {} this.worker = null; }
+  async load({ chain, dtype, useGPU, beams, onProgress }) {
+    this.beams = beams || 1;
+    // 1) Worker dene: zincirdeki ILK yuklenebilen model kazanir.
+    if (typeof Worker !== "undefined") {
+      for (const cand of chain) {
+        let worker = null;
+        try {
+          const blob = new Blob([WORKER_SRC], { type: "text/javascript" });
+          worker = new Worker(URL.createObjectURL(blob), { type: "module" });
+          const device = await this._workerLoad(worker, { model: cand.id, family: cand.family, dtype, useGPU, onProgress });
+          this.worker = worker; this.mode = "worker";
+          this.family = cand.family; this.modelId = cand.id; this.device = device;
+          worker.onmessage = (e) => this._onWorkerMsg(e.data);
+          // Worker cokerse bekleyen tum istekleri reddet (UI takilmasin).
+          worker.onerror = (e) => {
+            const msg = (e && e.message) || "çeviri arka planı çöktü";
+            for (const p of this.pending.values()) p.reject(new Error(msg));
+            this.pending.clear();
+          };
+          return;
+        } catch (err) {
+          console.warn("Model yüklenemedi (worker), sıradaki deneniyor:", cand.id, err);
+          if (worker) { try { worker.terminate(); } catch {} }
+          else break; // Worker olusturulamadi -> ana is parcacigina gec.
+        }
+      }
     }
-    // 2) Ana is parcacigi (geri donus)
+    // 2) Ana is parcacigi (geri donus) — ayni zinciri dene.
     const { pipeline, env } = await import(TRANSFORMERS_URL);
     env.allowLocalModels = false; env.useBrowserCache = true;
-    const devices = useGPU ? ["webgpu","wasm"] : ["wasm"];
     let lastErr;
-    for (const device of devices) {
-      try {
-        this.mainTranslator = await pipeline("translation", MODEL_ID, { device, dtype, progress_callback: onProgress });
-        this.device = device; this.mode = "main"; return;
-      } catch (err) { lastErr = err; this.mainTranslator = null; }
+    for (const cand of chain) {
+      const devices = useGPU ? ["webgpu","wasm"] : ["wasm"];
+      for (const device of devices) {
+        const dt = (device === "wasm" && dtype === "fp16") ? "q8" : dtype;
+        try {
+          this.mainTranslator = await pipeline("translation", cand.id, { device, dtype: dt, progress_callback: onProgress });
+          this.device = device; this.mode = "main";
+          this.family = cand.family; this.modelId = cand.id; return;
+        } catch (err) { lastErr = err; this.mainTranslator = null; }
+      }
     }
-    throw lastErr || new Error("Model yüklenemedi");
+    throw lastErr || new Error("Hiçbir çeviri modeli yüklenemedi");
   },
 
-  _workerLoad(worker, { dtype, useGPU, onProgress }) {
+  _workerLoad(worker, { model, family, dtype, useGPU, onProgress }) {
     return new Promise((resolve, reject) => {
       const onMsg = (e) => {
         const d = e.data;
         if (d.type === "progress") { onProgress && onProgress(d.p); }
-        else if (d.type === "ready") { this.device = d.device; worker.removeEventListener("message", onMsg); resolve(); }
+        else if (d.type === "ready") { worker.removeEventListener("message", onMsg); resolve(d.device); }
         else if (d.type === "loadError") { worker.removeEventListener("message", onMsg); reject(new Error(d.message)); }
       };
       worker.addEventListener("message", onMsg);
       worker.addEventListener("error", (e) => reject(new Error(e.message || "worker hatası")), { once: true });
-      worker.postMessage({ type: "load", model: MODEL_ID, dtype, useGPU });
+      worker.postMessage({ type: "load", model, family, dtype, useGPU });
     });
   },
 
   _onWorkerMsg(d) {
-    if (d.type === "result") { const p = this.pending.get(d.id); if (p) { this.pending.delete(d.id); p.resolve(d.text); } }
+    if (d.type === "result") { const p = this.pending.get(d.id); if (p) { this.pending.delete(d.id); p.resolve(d.texts); } }
     else if (d.type === "tError") { const p = this.pending.get(d.id); if (p) { this.pending.delete(d.id); p.reject(new Error(d.message)); } }
   },
 
-  translate(text, src) {
+  // Bir grup metni (batch) tek seferde cevirir -> WebGPU'da yuksek throughput.
+  translateBatch(texts) {
     if (this.mode === "worker") {
       const id = ++this.reqId;
       return new Promise((resolve, reject) => {
         this.pending.set(id, { resolve, reject });
-        this.worker.postMessage({ type:"translate", id, text, src, tgt: TGT_LANG });
+        this.worker.postMessage({ type:"translate", id, texts, beams: this.beams });
       });
     }
-    return this.mainTranslator(text, { src_lang: src, tgt_lang: TGT_LANG })
-      .then((res) => { const o = Array.isArray(res) ? res[0] : res; return (o && o.translation_text) || ""; });
+    const gen = { num_beams: this.beams || 1, do_sample: false };
+    const opts = this.family === "nllb"
+      ? Object.assign({ src_lang: "eng_Latn", tgt_lang: "tur_Latn" }, gen)
+      : gen;
+    return this.mainTranslator(texts, opts).then((res) => {
+      const arr = Array.isArray(res) ? res : [res];
+      return arr.map((o) => (o && o.translation_text) || "");
+    });
   }
 };
 
@@ -295,9 +326,13 @@ async function loadModel(){
   modelProgress.classList.remove("hidden");
   modelText.textContent = "Model indiriliyor (ilk seferde bir kez)...";
   try{
+    const mode = qualitySel.value;
+    const { beams } = tuning(mode, useGPU ? "webgpu" : "wasm");
     await Engine.load({
-      dtype: qualitySel.value,
+      chain: modelChain(mode),
+      dtype: mode,
       useGPU,
+      beams,
       onProgress: (p)=>{
         if(p && p.status==="progress" && p.total){
           const pct = Math.round((p.loaded/p.total)*100);
@@ -311,11 +346,12 @@ async function loadModel(){
     modelReady = true;
     modelFill.style.width="100%";
     const dev = Engine.device==="webgpu" ? "WebGPU" : "WASM";
-    modelText.textContent = `✓ Model hazır (${dev}) — artık çevrimdışı çalışır.`;
+    const mdl = String(Engine.modelId||"").split("/").pop();
+    modelText.textContent = `✓ Model hazır: ${mdl} (${dev}) — artık çevrimdışı çalışır.`;
     loadModelBtn.textContent = "Model Hazır ✓";
     deviceBadge.textContent = (Engine.device==="webgpu" ? "⚡ WebGPU" : "🐢 WASM") + (Engine.mode==="worker" ? " · arka planda" : "");
     dropzone.classList.remove("disabled");
-    dropzone.querySelector(".dz-hint").textContent = "Kaynak dil otomatik algılanır · Tamamen cihazınızda";
+    dropzone.querySelector(".dz-hint").textContent = "İngilizce → Türkçe · Tamamen cihazınızda";
   }catch(err){
     console.error(err);
     loadModelBtn.disabled = false; qualitySel.disabled = false;
@@ -351,51 +387,65 @@ async function handleFile(file){
     const buf = new Uint8Array(await file.arrayBuffer());
     const pages = await extractPdf(buf);
 
-    // Belge geneli dil tahmini (kisa sayfalar icin yedek)
-    const docLang = detectLang(pages.map(p=>p.text).join(" ").slice(0,4000), "eng_Latn");
+    phaseLabel.textContent = `${pages.length} sayfa`;
 
-    // Paragraf yapisini koruyarak isleri cikar -> global ilerleme + ETA.
+    // Paragraf yapisini koruyarak isleri cikar (kaynak dil = Ingilizce).
     // pageBuckets[pi][pj][ci] = pi. sayfa, pj. paragraf, ci. alt-parca cevirisi.
     const pageParas = pages.map(pg => splitParagraphs(pg.text));
     const pageBuckets = pageParas.map(paras => paras.map(()=>[]));
-    const jobs = []; // {pi, pj, ci, src, text}
+    const jobs = []; // {pi, pj, ci, text}
     pages.forEach((pg, pi)=>{
-      const src = detectLang(pg.text.length>=60 ? pg.text : "", docLang);
       pageParas[pi].forEach((para, pj)=>{
         chunkParagraph(para, MAX_CHARS).forEach((chunk, ci)=>{
-          if(chunk.trim()) jobs.push({ pi, pj, ci, src, text: chunk });
+          if(chunk.trim()) jobs.push({ pi, pj, ci, text: chunk });
         });
       });
     });
-    const totalJobs = jobs.length || 1;
 
-    const cache = new Map();   // ayni metin parcalarini tekrar cevirme
+    // Ayni metin parcalarini bir kez cevir (ustbilgi/altbilgi/tekrarlar).
+    // Benzersizleri uzunluga gore sirala -> ayni batch'te benzer uzunluk =>
+    // daha az dolgu (padding), daha yuksek GPU verimi.
+    const cache = new Map(); // metin -> ceviri (null: henuz cevrilmedi)
+    for(const job of jobs) if(!cache.has(job.text)) cache.set(job.text, null);
+    const uniqueTexts = [...cache.keys()].sort((a,b)=>a.length-b.length);
+    const totalU = uniqueTexts.length || 1;
+    const BATCH = tuning(qualitySel.value, Engine.device).batch;
+
     let done = 0, failed = 0; const t0 = performance.now();
 
-    for(const job of jobs){
+    for(let i=0; i<uniqueTexts.length; i+=BATCH){
       if(cancelRequested){ reset(); return; }
-      const key = job.src + " " + job.text;
-      let tr = cache.get(key);
-      if(tr === undefined){
-        try { tr = await Engine.translate(job.text, job.src); }
-        catch(e){ console.warn("parça çevrilemedi, orijinal korunuyor:", e); tr = job.text; failed++; }
-        cache.set(key, tr);
+      const batch = uniqueTexts.slice(i, i+BATCH);
+      let results;
+      try {
+        results = await Engine.translateBatch(batch);
+      } catch(e) {
+        // Batch coktu (or. bellek): her parcayi tek tek dene, blast yaricapini kucult.
+        console.warn("batch çevrilemedi, tek tek deneniyor:", e);
+        results = [];
+        for(const t of batch){
+          if(cancelRequested){ reset(); return; }
+          try { const r = await Engine.translateBatch([t]); results.push(r[0]); }
+          catch(_){ results.push(t); failed++; }
+        }
       }
-      pageBuckets[job.pi][job.pj][job.ci] = tr;
+      batch.forEach((t, k)=> cache.set(t, results[k] == null ? t : results[k]));
 
-      done++;
-      progressFill.style.width = Math.round(done/totalJobs*100)+"%";
-      phaseLabel.textContent = `sayfa ${job.pi+1} / ${pages.length}`;
-      progressText.textContent = `Çevriliyor... ${done} / ${totalJobs} parça`;
+      done += batch.length;
+      progressFill.style.width = Math.round(Math.min(done,totalU)/totalU*100)+"%";
+      progressText.textContent = `Çevriliyor... ${Math.min(done,totalU)} / ${totalU} parça`;
       const elapsed = (performance.now()-t0)/1000;
-      const eta = elapsed/done*(totalJobs-done);
-      progressSub.textContent = done>1 ? `kalan süre ${fmtTime(eta)}` : "ilk parça biraz yavaş olabilir...";
+      const eta = elapsed/done*(totalU-done);
+      progressSub.textContent = done>BATCH ? `kalan süre ${fmtTime(eta)}` : "ilk grup biraz yavaş olabilir...";
     }
 
     if(cancelRequested){ reset(); return; }
-    if(failed >= totalJobs){
+    if(failed >= totalU){
       return fail("Çeviri yapılamadı. Cihaz belleği yetersiz olabilir; 'Hızlı / düşük bellek' modunu deneyin veya tarayıcıyı yeniden başlatın.");
     }
+    // Cevirileri sayfa/paragraf yapisina geri yaz.
+    for(const job of jobs) pageBuckets[job.pi][job.pj][job.ci] = cache.get(job.text) ?? job.text;
+
     progressText.textContent="Çevrilmiş PDF oluşturuluyor..."; progressSub.textContent="";
     // Paragraf alt-parcalari bosluk, paragraflar bos satirla birlesir.
     const translated = pages.map((pg,pi)=>({
